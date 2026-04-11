@@ -4,8 +4,8 @@ import os
 
 # 1. ADJUSTED DIMENSIONS for smaller parking spots
 # You might need to tweak these slightly (e.g., 30x60) 
-width = 40 
-height = 65
+width = 30 
+height = 50
 
 # 2. SEPARATE DIRECTORY for the new parking lot
 save_dir = 'cropped_img'
@@ -31,7 +31,7 @@ def mouseclick(events, x, y, flags, params):
         positionList.append((x, y))
         # 3. CHANGED FILENAME TO 'parking.png'
         img_full = cv2.imread('parking.png')
-        img_resized = cv2.resize(img_full, (1280, 720))
+        img_resized = cv2.resize(img_full, (1920, 1080))
         save_cropped_img(img_resized, (x, y), len(positionList))
         
     if events == cv2.EVENT_RBUTTONDOWN:
