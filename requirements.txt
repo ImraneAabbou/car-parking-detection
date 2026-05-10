@@ -1,6 +1,7 @@
-tensorflow==2.9.2
-keras==2.9.0
-numpy==1.24.4
-Flask==2.1.3
+tensorflow[and-cuda]>=2.15.0
+numpy>=1.24.0
 opencv-python
-opencv-contrib-python
+scikit-learn
+matplotlib
+tqdm
+ipython
