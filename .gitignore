@@ -1,5 +1,4 @@
 venv/
 processed.mp4
-parking_model_v1.h5
 gpu_setup.py
-best_model.h5
+*h5
