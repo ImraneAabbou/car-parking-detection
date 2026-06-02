@@ -6,7 +6,7 @@ width = 75
 height = 150
 
 # 2. Updated pickle file name
-pickle_file = 'parking_positions_portion.pkl'
+pickle_file = '../parking_positions_portion.pkl'
 
 # Load existing positions if the file exists
 try:
@@ -41,7 +41,7 @@ cv2.namedWindow("Parking Selector")
 cv2.setMouseCallback("Parking Selector", mouseclick)
 
 while True:
-    image = cv2.imread('./parking-portion.png')
+    image = cv2.imread('../parking-portion.png')
     if image is None:
         print("Error: Could not find parking.png")
         break

@@ -8,8 +8,8 @@ width = 30
 height = 50
 
 # 2. SEPARATE DIRECTORY for the new parking lot
-save_dir = 'cropped_img'
-pickle_file = 'car_position_parking.pkl'
+save_dir = '../data/cropped_img'
+pickle_file = '../car_position_parking.pkl'
 
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
@@ -30,7 +30,7 @@ def mouseclick(events, x, y, flags, params):
     if events == cv2.EVENT_LBUTTONDOWN:
         positionList.append((x, y))
         # 3. CHANGED FILENAME TO 'parking.png'
-        img_full = cv2.imread('parking.png')
+        img_full = cv2.imread('../parking.png')
         img_resized = cv2.resize(img_full, (1920, 1080))
         save_cropped_img(img_resized, (x, y), len(positionList))
         
@@ -45,7 +45,7 @@ def mouseclick(events, x, y, flags, params):
 
 while True:
     # 4. LOAD THE SECOND IMAGE
-    image = cv2.imread('parking.png')
+    image = cv2.imread('../parking.png')
     if image is None:
         print("Error: Could not find parking.png")
         break
