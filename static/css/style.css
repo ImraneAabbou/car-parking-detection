@@ -1,0 +1,245 @@
+/* ═══════════════════════════════════════════════════════════════════
+   ParkVision — Custom Styles
+   Supplements Tailwind CSS v3 with glassmorphism, animations, and
+   premium visual effects.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── Base ───────────────────────────────────────────────────────── */
+:root {
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+body {
+    background: linear-gradient(160deg, #020617 0%, #0f172a 40%, #1a1038 100%);
+    background-attachment: fixed;
+}
+
+/* ─── Glassmorphism Cards ────────────────────────────────────────── */
+.glass-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: var(--glass-shadow);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+}
+
+.glass-header {
+    background: rgba(2, 6, 23, 0.7);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+}
+
+/* ─── Stat Cards ─────────────────────────────────────────────────── */
+.stat-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    padding: 1.25rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+.stat-icon-wrapper {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: rgba(226, 232, 240, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.15rem;
+}
+
+.stat-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+/* ─── Parking Grid Cells ─────────────────────────────────────────── */
+.spot-cell {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: 700;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+    position: relative;
+    overflow: hidden;
+}
+
+.spot-cell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.spot-cell:hover::before {
+    opacity: 0.15;
+    background: white;
+}
+
+.spot-available {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #6ee7b7;
+}
+
+.spot-occupied {
+    background: rgba(244, 63, 94, 0.15);
+    border: 1px solid rgba(244, 63, 94, 0.25);
+    color: #fda4af;
+}
+
+.spot-cell:hover {
+    transform: scale(1.15);
+    z-index: 10;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Event Items ────────────────────────────────────────────────── */
+.event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    animation: fadeSlideIn 0.35s ease-out;
+}
+
+.event-item:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.event-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.event-dot.available  { background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
+.event-dot.occupied   { background: #f43f5e; box-shadow: 0 0 8px rgba(244, 63, 94, 0.4); }
+.event-dot.warning    { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
+.event-dot.critical   { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+.event-dot.system     { background: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
+.event-dot.info       { background: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
+
+/* ─── Live Dot Pulse ─────────────────────────────────────────────── */
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    position: relative;
+}
+
+.live-dot::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 0; transform: scale(0.8); }
+    50%      { opacity: 0.4; transform: scale(1.4); }
+}
+
+/* ─── Spinner ────────────────────────────────────────────────────── */
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(99, 102, 241, 0.15);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ─── Fade Slide In Animation ────────────────────────────────────── */
+@keyframes fadeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ─── Custom Scrollbar ───────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Video loading hide ─────────────────────────────────────────── */
+.video-loaded #video-loading {
+    display: none;
+}
+
+/* ─── Responsive tweaks ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+    .stat-value {
+        font-size: 1.35rem;
+    }
+    .stat-icon-wrapper {
+        width: 36px;
+        height: 36px;
+    }
+    .spot-cell {
+        font-size: 0.5rem;
+    }
+}

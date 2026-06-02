@@ -7,3 +7,5 @@ tqdm
 ipython
 ultralytics
 shapely
+Flask
+Pillow
