@@ -2,3 +2,5 @@ venv/
 processed.mp4
 gpu_setup.py
 *h5
+processed_MobileNet.mp4
+processed_ResNet.mp4
