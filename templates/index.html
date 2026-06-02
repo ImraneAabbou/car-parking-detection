@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en" class="scroll-smooth" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Real-time AI-powered car parking detection dashboard with live video monitoring and occupancy tracking.">
-    <title>ParkVision — Smart Parking Detection</title>
+    <meta name="description" content="VisioPark — Real-time AI-powered car parking detection dashboard with live video monitoring and occupancy tracking.">
+    <title>VisioPark — Smart Parking Detection</title>
 
     <!-- Tailwind CSS v3 CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -36,31 +36,55 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
-<body class="bg-surface-950 text-white min-h-screen font-sans antialiased">
+<body class="min-h-screen font-sans antialiased">
 
     <!-- ═══════════════════════════════════════════════════════════════
          HEADER
          ═══════════════════════════════════════════════════════════════ -->
-    <header class="glass-header sticky top-0 z-50 border-b border-white/5">
+    <header class="glass-header sticky top-0 z-50">
         <div class="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <!-- Brand -->
             <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-500/25">
-                    <i data-lucide="car" class="w-5 h-5 text-white"></i>
+                    <i data-lucide="eye" class="w-5 h-5 text-white"></i>
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold tracking-tight leading-none">ParkVision</h1>
-                    <p class="text-[10px] text-surface-200/50 font-medium tracking-widest uppercase">Smart Parking Detection</p>
+                    <h1 class="text-lg font-bold tracking-tight leading-none themed-text-primary">VisioPark</h1>
+                    <p class="text-[10px] brand-subtitle font-medium tracking-widest uppercase">Smart Parking Detection</p>
                 </div>
             </div>
 
-            <!-- Live badge + clock -->
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                    <span class="live-dot"></span>
-                    <span class="text-xs font-semibold text-emerald-400 tracking-wide">LIVE</span>
+            <!-- Controls: Model selector + Live badge + Theme toggle + Clock -->
+            <div class="flex items-center gap-3">
+                <!-- Model Selector -->
+                <div class="model-selector-wrapper relative">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="brain" class="w-4 h-4 themed-text-muted hidden sm:block"></i>
+                        <select id="model-selector" class="model-select" title="Select inference model">
+                            <option value="mobilenet">MobileNetV2</option>
+                            <option value="resnet50">ResNet50</option>
+                            <option value="vgg16">VGG16</option>
+                        </select>
+                    </div>
+                    <!-- Loading indicator (hidden by default) -->
+                    <div id="model-loading" class="model-loading-indicator hidden">
+                        <div class="spinner-sm"></div>
+                        <span class="text-[10px] themed-text-muted">Switching…</span>
+                    </div>
                 </div>
-                <div id="clock" class="text-sm text-surface-200/60 font-mono hidden sm:block"></div>
+
+                <div class="live-badge flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                    <span class="live-dot"></span>
+                    <span class="text-xs font-semibold text-emerald-400 live-badge-text tracking-wide">LIVE</span>
+                </div>
+
+                <!-- Theme Toggle -->
+                <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle theme">
+                    <i data-lucide="moon" id="theme-icon-dark" class="w-[18px] h-[18px]"></i>
+                    <i data-lucide="sun" id="theme-icon-light" class="w-[18px] h-[18px] hidden"></i>
+                </button>
+
+                <div id="clock" class="clock-text text-sm font-mono hidden sm:block"></div>
             </div>
         </div>
     </header>
@@ -111,31 +135,31 @@
                     <p class="stat-label">Occupancy</p>
                     <div class="flex items-end gap-2">
                         <p id="stat-pct" class="stat-value">—</p>
-                        <span class="text-xs text-surface-200/40 font-medium mb-1">%</span>
+                        <span class="text-xs pct-unit font-medium mb-1">%</span>
                     </div>
                     <!-- Progress bar -->
-                    <div class="w-full h-1.5 rounded-full bg-white/5 mt-2 overflow-hidden">
+                    <div class="w-full h-1.5 rounded-full progress-track mt-2 overflow-hidden">
                         <div id="stat-pct-bar" class="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500" style="width: 0%"></div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- ─── MAIN GRID: VIDEO + PARKING MAP + EVENTS ──────────── -->
-        <section class="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
+        <!-- ─── MAIN ROW: TABS (Video/Map) + EVENTS side-by-side ─── -->
+        <section id="main-row" class="flex flex-col xl:flex-row gap-6 xl:items-stretch">
 
             <!-- LEFT PANEL: TABS (Video / Map) -->
-            <div class="xl:col-span-8 flex flex-col space-y-4">
-                
+            <div class="xl:flex-[2] flex flex-col space-y-4 min-w-0">
+
                 <!-- Tab Controls -->
-                <div class="flex items-center gap-2 bg-surface-950/50 p-1.5 rounded-xl border border-white/5 w-fit">
-                    <button id="tab-btn-video" class="tab-btn active relative px-4 py-2 text-sm font-semibold rounded-lg transition-all text-white bg-white/10 shadow-sm" onclick="switchTab('video')">
+                <div class="tab-container flex items-center gap-2 p-1.5 rounded-xl w-fit">
+                    <button id="tab-btn-video" class="tab-btn active relative px-4 py-2 text-sm font-semibold rounded-lg" onclick="switchTab('video')">
                         <div class="flex items-center gap-2 relative z-10">
                             <i data-lucide="video" class="w-4 h-4"></i>
                             <span>Live Camera</span>
                         </div>
                     </button>
-                    <button id="tab-btn-map" class="tab-btn relative px-4 py-2 text-sm font-semibold rounded-lg transition-all text-surface-200/60 hover:text-white hover:bg-white/5" onclick="switchTab('map')">
+                    <button id="tab-btn-map" class="tab-btn relative px-4 py-2 text-sm font-semibold rounded-lg" onclick="switchTab('map')">
                         <div class="flex items-center gap-2 relative z-10">
                             <i data-lucide="map" class="w-4 h-4"></i>
                             <span>Parking Map</span>
@@ -143,69 +167,73 @@
                     </button>
                 </div>
 
-                <!-- Tab Content: Video Feed -->
-                <div id="tab-content-video" class="glass-card overflow-hidden transition-opacity duration-300">
-                    <div class="flex items-center justify-between px-5 py-3 border-b border-white/5">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="video" class="w-4 h-4 text-primary-400"></i>
-                            <h2 class="text-sm font-semibold text-surface-200/80">Live Camera Feed</h2>
+                <!-- Tab Content Wrapper — fixed aspect so map matches video -->
+                <div class="tab-content-wrapper">
+
+                    <!-- Tab Content: Video Feed -->
+                    <div id="tab-content-video" class="glass-card overflow-hidden transition-opacity duration-300">
+                        <div class="flex items-center justify-between px-5 py-3 section-border">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="video" class="w-4 h-4 text-primary-400"></i>
+                                <h2 class="text-sm font-semibold section-header-text">Live Camera Feed</h2>
+                            </div>
+                            <span class="text-[10px] px-2 py-0.5 rounded themed-badge font-medium">MJPEG</span>
                         </div>
-                        <span class="text-[10px] px-2 py-0.5 rounded bg-primary-500/10 text-primary-300 font-medium">MJPEG</span>
-                    </div>
-                    <div class="relative bg-black aspect-video">
-                        <img
-                            id="video-feed"
-                            src="/video_feed"
-                            alt="Live parking lot camera feed"
-                            class="w-full h-full object-contain"
-                            loading="eager"
-                        >
-                        <!-- Loading overlay -->
-                        <div id="video-loading" class="absolute inset-0 flex items-center justify-center bg-surface-950/80">
-                            <div class="flex flex-col items-center gap-3">
-                                <div class="spinner"></div>
-                                <p class="text-xs text-surface-200/50 font-medium">Loading camera feed...</p>
+                        <div class="relative bg-black aspect-video">
+                            <img
+                                id="video-feed"
+                                src="/video_feed"
+                                alt="Live parking lot camera feed"
+                                class="w-full h-full object-contain"
+                                loading="eager"
+                            >
+                            <!-- Loading overlay -->
+                            <div id="video-loading" class="absolute inset-0 flex items-center justify-center">
+                                <div class="flex flex-col items-center gap-3">
+                                    <div class="spinner"></div>
+                                    <p class="text-xs loading-text font-medium">Loading camera feed...</p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Tab Content: Parking Map -->
-                <div id="tab-content-map" class="glass-card hidden opacity-0 transition-opacity duration-300">
-                    <div class="flex items-center justify-between px-5 py-3 border-b border-white/5">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="map" class="w-4 h-4 text-primary-400"></i>
-                            <h2 class="text-sm font-semibold text-surface-200/80">Parking Map</h2>
+                    <!-- Tab Content: Parking Map (hidden by default) -->
+                    <div id="tab-content-map" class="glass-card hidden opacity-0 transition-opacity duration-300 overflow-hidden">
+                        <div class="flex items-center justify-between px-5 py-3 section-border">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="map" class="w-4 h-4 text-primary-400"></i>
+                                <h2 class="text-sm font-semibold section-header-text">Parking Map</h2>
+                            </div>
+                            <!-- Legend -->
+                            <div class="flex items-center gap-3 text-[10px] font-medium themed-text-muted">
+                                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span> Free</span>
+                                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Taken</span>
+                            </div>
                         </div>
-                        <!-- Legend -->
-                        <div class="flex items-center gap-3 text-[10px] font-medium">
-                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span> Free</span>
-                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Taken</span>
+                        <!-- Parking grid body — will be sized by JS to match video aspect -->
+                        <div id="parking-map-body" class="parking-map-body p-6 overflow-y-auto custom-scrollbar">
+                            <div id="parking-grid" class="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-10 gap-3 w-full">
+                                <!-- Filled dynamically by JS -->
+                            </div>
                         </div>
                     </div>
-                    <div class="p-6">
-                        <div id="parking-grid" class="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-10 gap-3 w-full max-h-[600px] overflow-y-auto custom-scrollbar">
-                            <!-- Filled dynamically by JS -->
-                        </div>
-                    </div>
-                </div>
 
+                </div>
             </div>
 
-            <!-- RIGHT SIDEBAR: Events -->
-            <div class="xl:col-span-4 flex flex-col h-full">
-                <!-- EVENTS / NOTIFICATIONS -->
-                <div class="glass-card flex flex-col h-full flex-1">
-                    <div class="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
+            <!-- RIGHT PANEL: Events / Notifications — same row, scrollable, matching height -->
+            <div class="xl:flex-1 flex flex-col min-w-0">
+                <div id="notifications-card" class="glass-card flex flex-col notifications-panel">
+                    <div class="flex items-center justify-between px-5 py-3 section-border shrink-0">
                         <div class="flex items-center gap-2">
                             <i data-lucide="bell" class="w-4 h-4 text-primary-400"></i>
-                            <h2 class="text-sm font-semibold text-surface-200/80">Notifications</h2>
+                            <h2 class="text-sm font-semibold section-header-text">Notifications</h2>
                         </div>
-                        <span id="event-count" class="text-[10px] px-2 py-0.5 rounded-full bg-primary-500/10 text-primary-300 font-semibold">0</span>
+                        <span id="event-count" class="text-[10px] px-2 py-0.5 rounded-full themed-badge font-semibold">0</span>
                     </div>
-                    <div id="event-list" class="flex-1 overflow-y-auto custom-scrollbar divide-y divide-white/5 min-h-[400px]">
+                    <div id="event-list" class="event-list-dividers flex-1 overflow-y-auto custom-scrollbar">
                         <!-- Events injected by JS -->
-                        <div class="px-5 py-8 text-center text-xs text-surface-200/30 italic">Waiting for events…</div>
+                        <div class="px-5 py-8 text-center text-xs events-placeholder italic">Waiting for events…</div>
                     </div>
                 </div>
             </div>
@@ -215,12 +243,12 @@
     <!-- ═══════════════════════════════════════════════════════════════
          FOOTER
          ═══════════════════════════════════════════════════════════════ -->
-    <footer class="border-t border-white/5 mt-8">
-        <div class="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-surface-200/30">
-            <p>ParkVision &mdash; Deep Learning Parking Detection &copy; 2026</p>
+    <footer class="themed-footer mt-8">
+        <div class="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+            <p>VisioPark &mdash; Deep Learning Parking Detection &copy; 2026</p>
             <p class="flex items-center gap-1.5">
                 Powered by
-                <span class="font-semibold text-primary-400/60">MobileNetV2</span>
+                <span id="footer-model-name" class="font-semibold footer-accent">MobileNetV2</span>
                 &middot; Flask &middot; OpenCV &middot; TensorFlow
             </p>
         </div>

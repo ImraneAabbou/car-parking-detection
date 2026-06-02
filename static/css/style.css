@@ -1,19 +1,111 @@
 /* ═══════════════════════════════════════════════════════════════════
-   ParkVision — Custom Styles
+   VisioPark — Custom Styles
    Supplements Tailwind CSS v3 with glassmorphism, animations, and
-   premium visual effects.
+   premium visual effects. Supports light/dark mode via [data-theme].
    ═══════════════════════════════════════════════════════════════════ */
 
-/* ─── Base ───────────────────────────────────────────────────────── */
-:root {
+/* ─── Theme Variables (Dark — default) ───────────────────────────── */
+:root,
+[data-theme="dark"] {
     --glass-bg: rgba(255, 255, 255, 0.03);
     --glass-border: rgba(255, 255, 255, 0.06);
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --glass-hover-border: rgba(255, 255, 255, 0.1);
+    --glass-hover-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+
+    --body-bg: linear-gradient(160deg, #020617 0%, #0f172a 40%, #1a1038 100%);
+    --header-bg: rgba(2, 6, 23, 0.7);
+
+    --text-primary: #ffffff;
+    --text-secondary: rgba(226, 232, 240, 0.8);
+    --text-muted: rgba(226, 232, 240, 0.45);
+    --text-faint: rgba(226, 232, 240, 0.3);
+
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --divider: rgba(255, 255, 255, 0.05);
+
+    --event-hover: rgba(255, 255, 255, 0.02);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.15);
+
+    --video-loading-bg: rgba(2, 6, 23, 0.8);
+
+    --spot-available-bg: rgba(16, 185, 129, 0.15);
+    --spot-available-border: rgba(16, 185, 129, 0.25);
+    --spot-available-text: #6ee7b7;
+    --spot-occupied-bg: rgba(244, 63, 94, 0.15);
+    --spot-occupied-border: rgba(244, 63, 94, 0.25);
+    --spot-occupied-text: #fda4af;
+
+    --tab-inactive-text: rgba(226, 232, 240, 0.5);
+    --tab-active-bg: rgba(255, 255, 255, 0.1);
+    --tab-hover-bg: rgba(255, 255, 255, 0.05);
+    --tab-container-bg: rgba(2, 6, 23, 0.5);
+
+    --badge-bg: rgba(99, 102, 241, 0.1);
+    --badge-text: #a5b4fc;
+
+    --footer-text: rgba(226, 232, 240, 0.3);
+    --footer-accent: rgba(99, 102, 241, 0.6);
+
+    --progress-bar-bg: rgba(255, 255, 255, 0.05);
+    --spot-hover-overlay: rgba(255, 255, 255, 0.15);
 }
 
+/* ─── Theme Variables (Light) ────────────────────────────────────── */
+[data-theme="light"] {
+    --glass-bg: rgba(255, 255, 255, 0.75);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    --glass-hover-border: rgba(0, 0, 0, 0.12);
+    --glass-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+
+    --body-bg: linear-gradient(160deg, #f0f4f8 0%, #e2e8f0 40%, #eee6f7 100%);
+    --header-bg: rgba(255, 255, 255, 0.85);
+
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --text-faint: #cbd5e1;
+
+    --border-subtle: rgba(0, 0, 0, 0.06);
+    --divider: rgba(0, 0, 0, 0.06);
+
+    --event-hover: rgba(0, 0, 0, 0.02);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.2);
+
+    --video-loading-bg: rgba(241, 245, 249, 0.9);
+
+    --spot-available-bg: rgba(16, 185, 129, 0.12);
+    --spot-available-border: rgba(16, 185, 129, 0.3);
+    --spot-available-text: #059669;
+    --spot-occupied-bg: rgba(244, 63, 94, 0.1);
+    --spot-occupied-border: rgba(244, 63, 94, 0.3);
+    --spot-occupied-text: #e11d48;
+
+    --tab-inactive-text: #94a3b8;
+    --tab-active-bg: rgba(99, 102, 241, 0.1);
+    --tab-hover-bg: rgba(0, 0, 0, 0.04);
+    --tab-container-bg: rgba(0, 0, 0, 0.03);
+
+    --badge-bg: rgba(99, 102, 241, 0.1);
+    --badge-text: #4f46e5;
+
+    --footer-text: #94a3b8;
+    --footer-accent: #6366f1;
+
+    --progress-bar-bg: rgba(0, 0, 0, 0.06);
+    --spot-hover-overlay: rgba(0, 0, 0, 0.06);
+}
+
+
+/* ─── Base ───────────────────────────────────────────────────────── */
 body {
-    background: linear-gradient(160deg, #020617 0%, #0f172a 40%, #1a1038 100%);
+    background: var(--body-bg);
     background-attachment: fixed;
+    color: var(--text-primary);
+    transition: background 0.4s ease, color 0.3s ease;
 }
 
 /* ─── Glassmorphism Cards ────────────────────────────────────────── */
@@ -24,18 +116,20 @@ body {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     box-shadow: var(--glass-shadow);
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
 }
 
 .glass-card:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+    border-color: var(--glass-hover-border);
+    box-shadow: var(--glass-hover-shadow);
 }
 
 .glass-header {
-    background: rgba(2, 6, 23, 0.7);
+    background: var(--header-bg);
     backdrop-filter: blur(20px) saturate(1.5);
     -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border-bottom-color: var(--border-subtle) !important;
+    transition: background 0.3s ease;
 }
 
 /* ─── Stat Cards ─────────────────────────────────────────────────── */
@@ -52,9 +146,9 @@ body {
 }
 
 .stat-card:hover {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: var(--glass-hover-border);
     transform: translateY(-2px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
 .stat-icon-wrapper {
@@ -70,7 +164,7 @@ body {
 .stat-label {
     font-size: 0.7rem;
     font-weight: 500;
-    color: rgba(226, 232, 240, 0.45);
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 0.15rem;
@@ -81,6 +175,59 @@ body {
     font-weight: 800;
     line-height: 1.1;
     letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+/* Override colored stat values for light mode readability */
+[data-theme="light"] .stat-value.text-rose-400 {
+    color: #e11d48;
+}
+[data-theme="light"] .stat-value.text-emerald-400 {
+    color: #059669;
+}
+
+/* ─── Themed Text Utilities ──────────────────────────────────────── */
+.themed-text-primary { color: var(--text-primary); }
+.themed-text-secondary { color: var(--text-secondary); }
+.themed-text-muted { color: var(--text-muted); }
+.themed-text-faint { color: var(--text-faint); }
+
+/* ─── Section Headers ────────────────────────────────────────────── */
+.section-header-text {
+    color: var(--text-secondary);
+}
+
+/* ─── Tab System ─────────────────────────────────────────────────── */
+.tab-container {
+    background: var(--tab-container-bg);
+    border: 1px solid var(--glass-border);
+}
+
+.tab-btn {
+    color: var(--tab-inactive-text);
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover:not(.active) {
+    background: var(--tab-hover-bg);
+    color: var(--text-secondary);
+}
+
+.tab-btn.active {
+    background: var(--tab-active-bg) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Section Borders (header bars inside cards) ─────────────────── */
+.section-border {
+    border-bottom: 1px solid var(--divider);
+}
+
+/* ─── Badges ─────────────────────────────────────────────────────── */
+.themed-badge {
+    background: var(--badge-bg);
+    color: var(--badge-text);
 }
 
 /* ─── Parking Grid Cells ─────────────────────────────────────────── */
@@ -108,26 +255,26 @@ body {
 }
 
 .spot-cell:hover::before {
-    opacity: 0.15;
-    background: white;
+    opacity: 1;
+    background: var(--spot-hover-overlay);
 }
 
 .spot-available {
-    background: rgba(16, 185, 129, 0.15);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    color: #6ee7b7;
+    background: var(--spot-available-bg);
+    border: 1px solid var(--spot-available-border);
+    color: var(--spot-available-text);
 }
 
 .spot-occupied {
-    background: rgba(244, 63, 94, 0.15);
-    border: 1px solid rgba(244, 63, 94, 0.25);
-    color: #fda4af;
+    background: var(--spot-occupied-bg);
+    border: 1px solid var(--spot-occupied-border);
+    color: var(--spot-occupied-text);
 }
 
 .spot-cell:hover {
     transform: scale(1.15);
     z-index: 10;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 /* ─── Event Items ────────────────────────────────────────────────── */
@@ -140,7 +287,7 @@ body {
 }
 
 .event-item:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--event-hover);
 }
 
 .event-dot {
@@ -157,6 +304,27 @@ body {
 .event-dot.critical   { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
 .event-dot.system     { background: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
 .event-dot.info       { background: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
+
+/* Light mode: reduce glow intensity */
+[data-theme="light"] .event-dot.available  { box-shadow: 0 0 4px rgba(16, 185, 129, 0.25); }
+[data-theme="light"] .event-dot.occupied   { box-shadow: 0 0 4px rgba(244, 63, 94, 0.25); }
+[data-theme="light"] .event-dot.warning    { box-shadow: 0 0 4px rgba(245, 158, 11, 0.25); }
+[data-theme="light"] .event-dot.critical   { box-shadow: 0 0 4px rgba(239, 68, 68, 0.25); }
+[data-theme="light"] .event-dot.system     { box-shadow: 0 0 4px rgba(99, 102, 241, 0.25); }
+[data-theme="light"] .event-dot.info       { box-shadow: 0 0 4px rgba(99, 102, 241, 0.25); }
+
+.event-time {
+    color: var(--text-muted);
+}
+
+.event-msg {
+    color: var(--text-secondary);
+}
+
+/* ─── Event Dividers ─────────────────────────────────────────────── */
+.event-list-dividers > .event-item + .event-item {
+    border-top: 1px solid var(--divider);
+}
 
 /* ─── Live Dot Pulse ─────────────────────────────────────────────── */
 .live-dot {
@@ -191,6 +359,15 @@ body {
     animation: spin 0.8s linear infinite;
 }
 
+.spinner-sm {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(99, 102, 241, 0.15);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
@@ -217,17 +394,186 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--scrollbar-thumb);
     border-radius: 10px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--scrollbar-thumb-hover);
 }
 
 /* ─── Video loading hide ─────────────────────────────────────────── */
 .video-loaded #video-loading {
     display: none;
+}
+
+#video-loading {
+    background: var(--video-loading-bg);
+}
+
+.loading-text {
+    color: var(--text-muted);
+}
+
+/* ─── Theme Toggle Button ───────────────────────────────────────── */
+.theme-toggle {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.theme-toggle:hover {
+    border-color: var(--glass-hover-border);
+    background: var(--tab-hover-bg);
+    transform: scale(1.05);
+}
+
+.theme-toggle svg {
+    width: 18px;
+    height: 18px;
+    transition: transform 0.3s ease;
+}
+
+.theme-toggle:hover svg {
+    transform: rotate(15deg);
+}
+
+/* ─── Progress Bar ───────────────────────────────────────────────── */
+.progress-track {
+    background: var(--progress-bar-bg);
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────── */
+.themed-footer {
+    border-top: 1px solid var(--border-subtle);
+    color: var(--footer-text);
+}
+
+.themed-footer .footer-accent {
+    color: var(--footer-accent);
+}
+
+/* ─── Live badge (light mode adjustments) ────────────────────────── */
+[data-theme="light"] .live-badge {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+[data-theme="light"] .live-badge-text {
+    color: #059669;
+}
+
+/* ─── Clock ──────────────────────────────────────────────────────── */
+.clock-text {
+    color: var(--text-muted);
+}
+
+/* ─── Brand text ─────────────────────────────────────────────────── */
+.brand-subtitle {
+    color: var(--text-muted);
+}
+
+/* ─── Waiting-for-events placeholder ─────────────────────────────── */
+.events-placeholder {
+    color: var(--text-faint);
+}
+
+/* ─── Occupancy % unit ───────────────────────────────────────────── */
+.pct-unit {
+    color: var(--text-muted);
+}
+
+/* ─── Tab content: ensure map matches video height ───────────────── */
+.tab-content-wrapper {
+    position: relative;
+}
+
+/* Force map tab to same dimensions as video tab */
+#tab-content-map .parking-map-body {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+/* ─── Model Selector ─────────────────────────────────────────────── */
+.model-selector-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.model-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 0.4rem 2rem 0.4rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    min-width: 130px;
+}
+
+.model-select:hover {
+    border-color: var(--glass-hover-border);
+}
+
+.model-select:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.model-select option {
+    background: #1e293b;
+    color: #ffffff;
+    padding: 0.5rem;
+}
+
+[data-theme="light"] .model-select option {
+    background: #ffffff;
+    color: #1e293b;
+}
+
+.model-loading-indicator {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    white-space: nowrap;
+    z-index: 100;
+}
+
+/* ─── Notifications Panel (height constrained by JS) ─────────────── */
+.notifications-panel {
+    /* JS will set max-height to match the video feed + tab controls */
+    overflow: hidden;
+}
+
+.notifications-panel #event-list {
+    overflow-y: auto;
 }
 
 /* ─── Responsive tweaks ──────────────────────────────────────────── */
@@ -241,5 +587,9 @@ body {
     }
     .spot-cell {
         font-size: 0.5rem;
+    }
+    .model-select {
+        min-width: 100px;
+        font-size: 0.65rem;
     }
 }

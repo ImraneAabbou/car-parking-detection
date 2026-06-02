@@ -1,8 +1,9 @@
 """
-Car Parking Detection — Flask Web Application
+VisioPark — Flask Web Application
 ================================================
 Real-time parking lot monitoring with deep learning inference.
 Streams video with annotated parking spots and serves live stats.
+Supports runtime model switching between MobileNet, ResNet50, and VGG16.
 """
 
 import os
@@ -14,27 +15,24 @@ from collections import deque
 
 import cv2
 import numpy as np
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, request
 
 # ─── Lazy-load TensorFlow to speed up startup ───────────────────────
-_model = None
-_model_lock = threading.Lock()
+_tf = None
+_tf_lock = threading.Lock()
 
 
-def _get_model():
-    """Load the Keras model once (thread-safe)."""
-    global _model
-    if _model is None:
-        with _model_lock:
-            if _model is None:
-                import tensorflow as tf
-                from config import MODEL_PATH
-                # Suppress TF info messages
+def _get_tf():
+    """Import TensorFlow once (thread-safe)."""
+    global _tf
+    if _tf is None:
+        with _tf_lock:
+            if _tf is None:
                 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+                import tensorflow as tf
                 tf.get_logger().setLevel("ERROR")
-                _model = tf.keras.models.load_model(MODEL_PATH)
-                print(f"[INFO] Model loaded from {MODEL_PATH}")
-    return _model
+                _tf = tf
+    return _tf
 
 
 # ─── Flask app ───────────────────────────────────────────────────────
@@ -47,8 +45,53 @@ from config import (
     MODEL_IMG_WIDTH, MODEL_IMG_HEIGHT,
     VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT,
     FRAME_SKIP, CLASSIFICATION_THRESHOLD,
-    MAX_EVENTS,
+    MAX_EVENTS, BASE_DIR,
 )
+
+# ─── Available models registry ──────────────────────────────────────
+AVAILABLE_MODELS = {
+    "mobilenet": {
+        "name": "MobileNetV2",
+        "file": "mobilenet_model.h5",
+        "path": os.path.join(BASE_DIR, "models", "mobilenet_model.h5"),
+    },
+    "resnet50": {
+        "name": "ResNet50",
+        "file": "resnet50_model.h5",
+        "path": os.path.join(BASE_DIR, "models", "resnet50_model.h5"),
+    },
+    "vgg16": {
+        "name": "VGG16",
+        "file": "vgg16_model.h5",
+        "path": os.path.join(BASE_DIR, "models", "vgg16_model.h5"),
+    },
+}
+
+# ─── Active model state ─────────────────────────────────────────────
+_model = None
+_model_lock = threading.Lock()
+_active_model_key = "mobilenet"  # default
+
+
+def _load_model(model_key):
+    """Load a model by key (thread-safe). Returns the loaded Keras model."""
+    global _model, _active_model_key
+    tf = _get_tf()
+    info = AVAILABLE_MODELS[model_key]
+    with _model_lock:
+        _model = tf.keras.models.load_model(info["path"])
+        _active_model_key = model_key
+        print(f"[INFO] Model loaded: {info['name']} ({info['path']})")
+    return _model
+
+
+def _get_model():
+    """Get the currently active model, loading default if needed."""
+    global _model
+    if _model is None:
+        _load_model(_active_model_key)
+    return _model
+
 
 # ─── Load parking positions ─────────────────────────────────────────
 with open(PICKLE_PATH, "rb") as f:
@@ -88,7 +131,7 @@ def classify_spots_batch(crops, model):
     # Predict in one go
     preds = model.predict(batch, verbose=0)
     
-    # MobileNetV2 binary: sigmoid output → >threshold = Unreserved (1), else Reserved (0)
+    # Binary: sigmoid output → >threshold = Unreserved (1), else Reserved (0)
     return [float(p[0]) > CLASSIFICATION_THRESHOLD for p in preds]
 
 
@@ -133,6 +176,10 @@ def video_processing_loop():
 
         # Only run inference every N frames for performance
         if frame_count % FRAME_SKIP == 0:
+            # Grab the current model reference (may have been swapped)
+            with _model_lock:
+                model = _model
+
             crops_to_classify = []
             valid_indices = []
             new_status = [True] * TOTAL_SPOTS
@@ -274,12 +321,53 @@ def api_events():
     return jsonify({"events": events})
 
 
+@app.route("/api/models")
+def api_models():
+    """JSON endpoint listing available models and the active one."""
+    models = []
+    for key, info in AVAILABLE_MODELS.items():
+        models.append({
+            "key": key,
+            "name": info["name"],
+            "active": key == _active_model_key,
+        })
+    return jsonify({"models": models, "active": _active_model_key})
+
+
+@app.route("/api/models/switch", methods=["POST"])
+def api_models_switch():
+    """Switch the active inference model at runtime."""
+    data = request.get_json(force=True)
+    model_key = data.get("model")
+
+    if model_key not in AVAILABLE_MODELS:
+        return jsonify({"error": f"Unknown model: {model_key}"}), 400
+
+    if model_key == _active_model_key:
+        return jsonify({
+            "message": f"{AVAILABLE_MODELS[model_key]['name']} is already active",
+            "active": _active_model_key,
+        })
+
+    try:
+        old_name = AVAILABLE_MODELS[_active_model_key]["name"]
+        _load_model(model_key)
+        new_name = AVAILABLE_MODELS[model_key]["name"]
+        log_event(f"Model switched: {old_name} → {new_name}", "system")
+        return jsonify({
+            "message": f"Switched to {new_name}",
+            "active": _active_model_key,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ─── Main ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     # Start the video processing in a background daemon thread
     processing_thread = threading.Thread(target=video_processing_loop, daemon=True)
     processing_thread.start()
 
-    print("[INFO] Starting Car Parking Detection Dashboard...")
+    print("[INFO] Starting VisioPark Dashboard...")
     print("[INFO] Open http://127.0.0.1:5000 in your browser")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
