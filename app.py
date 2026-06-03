@@ -275,7 +275,16 @@ def generate_mjpeg():
 @app.route("/")
 def index():
     """Serve the main dashboard page."""
-    return render_template("index.html", total_spots=TOTAL_SPOTS)
+    spot_positions = [{"x": int(p[0]), "y": int(p[1])} for p in POSITIONS]
+    return render_template(
+        "index.html",
+        total_spots=TOTAL_SPOTS,
+        spot_positions=spot_positions,
+        spot_w=SPOT_WIDTH,
+        spot_h=SPOT_HEIGHT,
+        frame_w=VIDEO_FRAME_WIDTH,
+        frame_h=VIDEO_FRAME_HEIGHT,
+    )
 
 
 @app.route("/video_feed")

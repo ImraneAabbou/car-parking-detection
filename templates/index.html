@@ -149,7 +149,7 @@
         <section id="main-row" class="flex flex-col xl:flex-row gap-6 xl:items-stretch">
 
             <!-- LEFT PANEL: TABS (Video / Map) -->
-            <div class="xl:flex-[2] flex flex-col space-y-4 min-w-0">
+            <div class="xl:flex-[4] flex flex-col space-y-4 min-w-0">
 
                 <!-- Tab Controls -->
                 <div class="tab-container flex items-center gap-2 p-1.5 rounded-xl w-fit">
@@ -210,10 +210,10 @@
                                 <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span> Taken</span>
                             </div>
                         </div>
-                        <!-- Parking grid body — will be sized by JS to match video aspect -->
-                        <div id="parking-map-body" class="parking-map-body p-6 overflow-y-auto custom-scrollbar">
-                            <div id="parking-grid" class="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-10 gap-3 w-full">
-                                <!-- Filled dynamically by JS -->
+                        <!-- Parking mini-map canvas — sized by JS to match video aspect -->
+                        <div id="parking-map-body" class="parking-map-body p-3 overflow-hidden">
+                            <div id="parking-canvas-wrapper" class="relative w-full h-full flex items-center justify-center">
+                                <canvas id="parking-canvas" class="w-full h-full rounded-lg"></canvas>
                             </div>
                         </div>
                     </div>
@@ -253,6 +253,16 @@
             </p>
         </div>
     </footer>
+
+    <!-- Dashboard config -->
+    <script>
+        const SPOT_POSITIONS = {{ spot_positions | tojson }};
+        const SPOT_WIDTH = {{ spot_w }};
+        const SPOT_HEIGHT = {{ spot_h }};
+        const VIDEO_FRAME_WIDTH = {{ frame_w }};
+        const VIDEO_FRAME_HEIGHT = {{ frame_h }};
+        const PARKING_BG = "{{ url_for('static', filename='images/parking-bg.png') }}";
+    </script>
 
     <!-- Dashboard JS -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>

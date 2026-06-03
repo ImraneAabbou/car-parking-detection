@@ -500,7 +500,17 @@ body {
 #tab-content-map .parking-map-body {
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
+}
+
+#parking-canvas-wrapper {
+    flex: 1;
+    min-height: 0;
+}
+
+#parking-canvas {
+    display: block;
+    border-radius: 8px;
 }
 
 /* ─── Model Selector ─────────────────────────────────────────────── */

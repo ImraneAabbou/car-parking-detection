@@ -1,9 +1,3 @@
-/**
- * ParkVision Dashboard JavaScript
- * Handles live polling, UI updates, theme switching, and animations.
- */
-
-// ─── Theme Toggle Logic ────────────────────────────────────────────
 (function initTheme() {
     const saved = localStorage.getItem('parkvision-theme');
     if (saved) {
@@ -33,8 +27,6 @@ function updateThemeIcons(theme) {
     }
 }
 
-
-// ─── Tab Switching Logic ───────────────────────────────────────────
 window.switchTab = function (tabId) {
     const btnVideo = document.getElementById('tab-btn-video');
     const btnMap = document.getElementById('tab-btn-map');
@@ -43,7 +35,6 @@ window.switchTab = function (tabId) {
 
     if (!btnVideo || !btnMap || !contentVideo || !contentMap) return;
 
-    // Reset all tabs
     [btnVideo, btnMap].forEach(btn => {
         btn.classList.remove('active');
     });
@@ -66,64 +57,129 @@ window.switchTab = function (tabId) {
     }
 };
 
-
-// ─── Sync Parking Map height to match video tab ────────────────────
 function syncMapHeight() {
-    const videoTab = document.getElementById('tab-content-video');
     const mapTab = document.getElementById('tab-content-map');
     const mapBody = document.getElementById('parking-map-body');
+    const mainRow = document.getElementById('main-row');
 
-    if (!videoTab || !mapTab || !mapBody) return;
+    if (!mapTab || !mapBody || !mainRow) return;
 
-    // Get the video tab's total height (it may be hidden, so measure first)
-    const videoIsHidden = videoTab.classList.contains('hidden');
+    const availHeight = mainRow.offsetHeight || window.innerHeight - 250;
+    const targetHeight = Math.max(availHeight, 500);
 
-    // Temporarily show video tab to measure
-    if (videoIsHidden) {
-        videoTab.style.visibility = 'hidden';
-        videoTab.style.position = 'absolute';
-        videoTab.classList.remove('hidden');
+    mapTab.style.height = targetHeight + 'px';
+    const headerEl = mapTab.querySelector('.section-border');
+    const headerHeight = headerEl ? headerEl.offsetHeight : 48;
+    mapBody.style.height = (targetHeight - headerHeight) + 'px';
+    mapBody.style.maxHeight = (targetHeight - headerHeight) + 'px';
+
+    requestAnimationFrame(() => resizeCanvas());
+}
+
+// ─── Canvas Mini-Map ──────────────────────────────────────────────
+const canvas = document.getElementById('parking-canvas');
+const ctx = canvas ? canvas.getContext('2d') : null;
+
+let canvasScale = 1;
+
+function resizeCanvas() {
+    if (!canvas || !ctx) return;
+
+    const wrapper = document.getElementById('parking-canvas-wrapper');
+    if (!wrapper) return;
+
+    const rect = wrapper.getBoundingClientRect();
+    const availW = rect.width;
+    const availH = rect.height;
+
+    if (availW <= 0 || availH <= 0) return;
+
+    const frameRatio = VIDEO_FRAME_WIDTH / VIDEO_FRAME_HEIGHT;
+    let drawW, drawH;
+
+    if (availW / availH > frameRatio) {
+        drawH = availH;
+        drawW = availH * frameRatio;
+    } else {
+        drawW = availW;
+        drawH = availW / frameRatio;
     }
 
-    const videoHeight = videoTab.offsetHeight;
+    canvas.width = Math.round(drawW * window.devicePixelRatio || 1);
+    canvas.height = Math.round(drawH * window.devicePixelRatio || 1);
+    canvas.style.width = Math.round(drawW) + 'px';
+    canvas.style.height = Math.round(drawH) + 'px';
 
-    // Restore hidden state
-    if (videoIsHidden) {
-        videoTab.classList.add('hidden');
-        videoTab.style.visibility = '';
-        videoTab.style.position = '';
-    }
+    canvasScale = canvas.width / VIDEO_FRAME_WIDTH;
 
-    // Set map tab to same total height
-    if (videoHeight > 0) {
-        mapTab.style.height = videoHeight + 'px';
-        // Calculate body height = total - header
-        const headerEl = mapTab.querySelector('.section-border');
-        const headerHeight = headerEl ? headerEl.offsetHeight : 48;
-        mapBody.style.height = (videoHeight - headerHeight) + 'px';
-        mapBody.style.maxHeight = (videoHeight - headerHeight) + 'px';
+    drawCanvas();
+}
+
+function drawCanvas() {
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (_lastSpots) {
+        renderSpotsOnCanvas(_lastSpots);
     }
 }
 
+let _lastSpots = null;
+
+function renderSpotsOnCanvas(spots) {
+    if (!ctx) return;
+
+    const sx = SPOT_WIDTH * canvasScale;
+    const sy = SPOT_HEIGHT * canvasScale;
+    // Enforce min 2px so spots are always visible
+    const sw = Math.max(2, sx);
+    const sh = Math.max(2, sy);
+
+    spots.forEach(spot => {
+        const pos = SPOT_POSITIONS[spot.id - 1];
+        if (!pos) return;
+
+        const cx = pos.x * canvasScale;
+        const cy = pos.y * canvasScale;
+
+        if (spot.status === 'available') {
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.65)';
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
+        } else {
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.65)';
+            ctx.strokeStyle = 'rgba(244, 63, 94, 0.9)';
+        }
+
+        ctx.fillRect(cx, cy, sw, sh);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx, cy, sw, sh);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `bold ${Math.max(5, Math.round(sw * 0.5))}px sans-serif`;
+        ctx.fillText(spot.id, cx + sw / 2, cy + sh / 2);
+    });
+}
 
 // ─── Main Dashboard Logic ──────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-    // Initialize theme icons
     const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     updateThemeIcons(currentTheme);
 
-    // Bind theme toggle button
     const themeBtn = document.getElementById('theme-toggle');
     if (themeBtn) {
         themeBtn.addEventListener('click', toggleTheme);
     }
 
-    // DOM Elements
     const statOccupied = document.getElementById("stat-occupied");
     const statAvailable = document.getElementById("stat-available");
     const statPct = document.getElementById("stat-pct");
     const statPctBar = document.getElementById("stat-pct-bar");
-    const parkingGrid = document.getElementById("parking-grid");
     const eventList = document.getElementById("event-list");
     const eventCount = document.getElementById("event-count");
     const videoFeed = document.getElementById("video-feed");
@@ -131,14 +187,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let lastKnownEventsCount = 0;
 
-    // --- Utility: Clock ---
+    // --- Canvas init ---
+    resizeCanvas();
+
     function updateClock() {
         clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     setInterval(updateClock, 1000);
     updateClock();
 
-    // --- Utility: Video Load ---
     const videoParent = videoFeed ? videoFeed.closest('.glass-card') : null;
     if (videoFeed && videoParent) {
         if (videoFeed.complete) {
@@ -150,51 +207,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // --- Poll: API Status ---
     async function fetchStatus() {
         try {
             const res = await fetch("/api/status");
             const data = await res.json();
 
-            // Update Stats
             statOccupied.textContent = data.occupied;
             statAvailable.textContent = data.available;
             statPct.textContent = data.occupancy_pct;
             statPctBar.style.width = `${data.occupancy_pct}%`;
 
-            // Update Parking Grid
-            updateParkingGrid(data.spots);
+            _lastSpots = data.spots;
+            drawCanvas();
         } catch (error) {
             console.error("Failed to fetch parking status:", error);
         }
     }
 
-    // --- Update Parking Grid ---
-    function updateParkingGrid(spots) {
-        if (parkingGrid.children.length === 0) {
-            // First time initialization
-            spots.forEach(spot => {
-                const div = document.createElement("div");
-                div.id = `spot-${spot.id}`;
-                div.textContent = spot.id;
-                div.className = `spot-cell ${spot.status === 'available' ? 'spot-available' : 'spot-occupied'}`;
-                parkingGrid.appendChild(div);
-            });
-        } else {
-            // Update existing
-            spots.forEach(spot => {
-                const div = document.getElementById(`spot-${spot.id}`);
-                if (div) {
-                    const newClass = spot.status === 'available' ? 'spot-available' : 'spot-occupied';
-                    if (!div.classList.contains(newClass)) {
-                        div.className = `spot-cell ${newClass}`;
-                    }
-                }
-            });
-        }
-    }
-
-    // --- Poll: API Events ---
     async function fetchEvents() {
         try {
             const res = await fetch("/api/events");
@@ -211,11 +240,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // --- Render Events ---
     function renderEvents(events) {
         eventCount.textContent = events.length;
 
-        // Clear list
         eventList.innerHTML = "";
 
         events.forEach(ev => {
@@ -245,7 +272,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- Sync map height on window resize ---
     window.addEventListener('resize', () => {
         const mapTab = document.getElementById('tab-content-map');
         if (mapTab && !mapTab.classList.contains('hidden')) {
@@ -253,11 +279,21 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // --- Start Polling ---
+    // Re-draw canvas whenever map becomes visible
+    const mapObserver = new MutationObserver(() => {
+        const mapTab = document.getElementById('tab-content-map');
+        if (mapTab && !mapTab.classList.contains('hidden')) {
+            requestAnimationFrame(() => resizeCanvas());
+        }
+    });
+    const mapTab = document.getElementById('tab-content-map');
+    if (mapTab) {
+        mapObserver.observe(mapTab, { attributes: true, attributeFilter: ['class'] });
+    }
+
     setInterval(fetchStatus, 2000);
     setInterval(fetchEvents, 3000);
 
-    // Initial fetch
     fetchStatus();
     fetchEvents();
 });
