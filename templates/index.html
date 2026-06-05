@@ -165,6 +165,12 @@
                             <span>Parking Map</span>
                         </div>
                     </button>
+                    <button id="tab-btn-accident" class="tab-btn relative px-4 py-2 text-sm font-semibold rounded-lg" onclick="switchTab('accident')">
+                        <div class="flex items-center gap-2 relative z-10">
+                            <i data-lucide="triangle-alert" class="w-4 h-4"></i>
+                            <span>Accident Detection</span>
+                        </div>
+                    </button>
                 </div>
 
                 <!-- Tab Content Wrapper — fixed aspect so map matches video -->
@@ -214,6 +220,33 @@
                         <div id="parking-map-body" class="parking-map-body p-3 overflow-hidden">
                             <div id="parking-canvas-wrapper" class="relative w-full h-full flex items-center justify-center">
                                 <canvas id="parking-canvas" class="w-full h-full rounded-lg"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Accident Detection (hidden by default) -->
+                    <div id="tab-content-accident" class="glass-card hidden opacity-0 transition-opacity duration-300 overflow-hidden">
+                        <div class="flex items-center justify-between px-5 py-3 section-border">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="triangle-alert" class="w-4 h-4 text-rose-400"></i>
+                                <h2 class="text-sm font-semibold section-header-text">Accident Detection Feed</h2>
+                            </div>
+                            <span class="text-[10px] px-2 py-0.5 rounded themed-badge font-medium">MJPEG</span>
+                        </div>
+                        <div class="relative bg-black aspect-video">
+                            <img
+                                id="accident-feed"
+                                src=""
+                                alt="Accident detection camera feed"
+                                class="w-full h-full object-contain"
+                                loading="eager"
+                            >
+                            <!-- Loading overlay -->
+                            <div id="accident-loading" class="absolute inset-0 flex items-center justify-center">
+                                <div class="flex flex-col items-center gap-3">
+                                    <div class="spinner"></div>
+                                    <p class="text-xs loading-text font-medium">Loading accident detection feed...</p>
+                                </div>
                             </div>
                         </div>
                     </div>

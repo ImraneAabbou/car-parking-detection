@@ -7,15 +7,26 @@ Supports runtime model switching between MobileNet, ResNet50, and VGG16.
 """
 
 import os
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+
 import pickle
 import threading
 import time
-from datetime import datetime
+import math
+import tempfile
+import shutil
+from datetime import datetime, timedelta
 from collections import deque
 
 import cv2
 import numpy as np
 from flask import Flask, render_template, Response, jsonify, request
+
+try:
+    import geoai
+except ImportError:
+    geoai = None
+    print("[WARN] geoai not installed — accident detection tab will be unavailable")
 
 # ─── Lazy-load TensorFlow to speed up startup ───────────────────────
 _tf = None
@@ -110,6 +121,29 @@ event_log_lock = threading.Lock()
 # Latest annotated frame (JPEG bytes) for MJPEG streaming
 latest_frame = None
 frame_lock = threading.Lock()
+
+# ─── Accident detection state ───────────────────────────────────────
+ACCIDENT_PICKLE_PATH = os.path.join(BASE_DIR, "parking_positions_portion.pkl")
+accident_parking_spots = []
+if os.path.exists(ACCIDENT_PICKLE_PATH):
+    with open(ACCIDENT_PICKLE_PATH, "rb") as f:
+        accident_parking_spots = pickle.load(f)
+    print(f"[INFO] Loaded {len(accident_parking_spots)} accident parking spot coordinates.")
+else:
+    print(f"[WARN] Accident pickle not found at {ACCIDENT_PICKLE_PATH}")
+
+accident_events = deque(maxlen=MAX_EVENTS)
+accident_events_lock = threading.Lock()
+
+ACCIDENT_SPOT_W = 75
+ACCIDENT_SPOT_H = 150
+ACCIDENT_EDGE_DIST_THRESH = 5.0
+ACCIDENT_DEBOUNCE_SEC = 10.0
+
+ACCIDENT_VIDEOS = [
+    os.path.join(BASE_DIR, "data", "accidents", f"accident-{i}.mp4")
+    for i in range(1, 4)
+]
 
 
 # ─── Helper: classify a batch of spot crops ──────────────────────────
@@ -257,6 +291,173 @@ def video_processing_loop():
     cap.release()
 
 
+# ─── Accident detection frame generator ────────────────────────────
+def generate_accident_frames():
+    """Process accident videos frame-by-frame, yield JPEG bytes for MJPEG streaming.
+    Cycles through accident-1.mp4 → accident-2.mp4 → accident-3.mp4 → loop.
+    Only runs while a client is connected (no background processing).
+    """
+    if geoai is None:
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n\r\n"
+        return
+
+    detector = geoai.CarDetector()
+    spots = accident_parking_spots
+    spot_w = ACCIDENT_SPOT_W
+    spot_h = ACCIDENT_SPOT_H
+    edge_dist_thresh = ACCIDENT_EDGE_DIST_THRESH
+    debounce_sec = ACCIDENT_DEBOUNCE_SEC
+
+    recent_alerts = {}
+    tmp_dir = tempfile.mkdtemp()
+    frame_temp = os.path.join(tmp_dir, "frame.tif")
+
+    try:
+        video_index = 0
+        frame_count = 0
+
+        while True:
+            video_path = ACCIDENT_VIDEOS[video_index]
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                video_index = (video_index + 1) % len(ACCIDENT_VIDEOS)
+                continue
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                frame_count += 1
+
+                cv2.imwrite(frame_temp, frame)
+                mask_path = detector.generate_masks(frame_temp, min_object_area=800)
+
+                # --- VISUAL LAYER: DRAW SEMI-TRANSPARENT PARKING SPOTS ---
+                if len(spots) > 0:
+                    overlay = frame.copy()
+                    for idx, pos in enumerate(spots):
+                        spot_x, spot_y = pos
+                        cv2.rectangle(overlay, (spot_x, spot_y), (spot_x + spot_w, spot_y + spot_h), (200, 200, 200), 1)
+                    cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
+                    for idx, pos in enumerate(spots):
+                        spot_x, spot_y = pos
+                        cv2.putText(frame, str(idx + 1), (spot_x + 3, spot_y + 12),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
+
+                if mask_path and os.path.exists(mask_path):
+                    masks_img = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
+
+                    if masks_img is not None:
+                        mask_8bit = (masks_img * 255).astype(np.uint8) if masks_img.max() <= 1 else masks_img.astype(np.uint8)
+                        if len(mask_8bit.shape) == 3:
+                            mask_8bit = mask_8bit[:, :, 0]
+
+                        contours, _ = cv2.findContours(mask_8bit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                        valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 200]
+                        num_cars = len(valid_contours)
+
+                        colliding_indices = set()
+                        crash_centroids = []
+
+                        # --- CRASH ENGINE LOGIC ---
+                        for i in range(num_cars):
+                            cnt_a = valid_contours[i]
+                            M = cv2.moments(cnt_a)
+                            cX = int(M["m10"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][0]
+                            cY = int(M["m01"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][1]
+
+                            for j in range(i + 1, num_cars):
+                                cnt_b = valid_contours[j]
+                                min_dist = float('inf')
+                                for point in cnt_a:
+                                    pt = (float(point[0][0]), float(point[0][1]))
+                                    dist = cv2.pointPolygonTest(cnt_b, pt, True)
+                                    abs_dist = abs(dist)
+                                    if abs_dist < min_dist:
+                                        min_dist = abs_dist
+                                if min_dist <= edge_dist_thresh:
+                                    colliding_indices.add(i)
+                                    colliding_indices.add(j)
+                                    crash_centroids.append((cX, cY))
+
+                        # --- DUAL-CONDITION DEBOUNCE EVALUATION ---
+                        if len(colliding_indices) > 0 and len(spots) > 0:
+                            avg_cx = int(sum(pt[0] for pt in crash_centroids) / len(crash_centroids))
+                            avg_cy = int(sum(pt[1] for pt in crash_centroids) / len(crash_centroids))
+
+                            closest_spot_idx = None
+                            min_spot_dist = float('inf')
+                            for idx, pos in enumerate(spots):
+                                spot_x, spot_y = pos
+                                center_spot_x = spot_x + (spot_w / 2)
+                                center_spot_y = spot_y + (spot_h / 2)
+                                dist_to_spot = math.sqrt((avg_cx - center_spot_x)**2 + (avg_cy - center_spot_y)**2)
+                                if dist_to_spot < min_spot_dist:
+                                    min_spot_dist = dist_to_spot
+                                    closest_spot_idx = idx
+
+                            current_time = datetime.now()
+                            should_trigger_alert = True
+
+                            if closest_spot_idx in recent_alerts:
+                                last_alert_time = recent_alerts[closest_spot_idx]
+                                if (current_time - last_alert_time) < timedelta(seconds=debounce_sec):
+                                    should_trigger_alert = False
+
+                            if should_trigger_alert:
+                                recent_alerts[closest_spot_idx] = current_time
+                                log_entry = {
+                                    "datetime": current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                    "closest_spot_index": closest_spot_idx + 1,
+                                    "frame": frame_count
+                                }
+                                with accident_events_lock:
+                                    accident_events.appendleft({
+                                        "time": current_time.strftime("%H:%M:%S"),
+                                        "datetime": current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                        "spot": closest_spot_idx + 1,
+                                        "frame": frame_count,
+                                    })
+
+                        # --- VISUAL RENDERING FOR CAR DETECTIONS ---
+                        for idx, cnt in enumerate(valid_contours):
+                            M = cv2.moments(cnt)
+                            if M["m00"] != 0:
+                                cX = int(M["m10"] / M["m00"])
+                                cY = int(M["m01"] / M["m00"])
+                            else:
+                                cX, cY = cnt[0][0][0], cnt[0][0][1]
+
+                            if idx in colliding_indices:
+                                cv2.drawContours(frame, [cnt], -1, (0, 0, 255), 2)
+                                cv2.putText(frame, "CRASH", (cX - 20, cY),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+                            else:
+                                cv2.drawContours(frame, [cnt], -1, (0, 255, 0), 1)
+
+                    try:
+                        os.remove(mask_path)
+                    except OSError:
+                        pass
+
+                _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+                )
+
+            cap.release()
+            video_index = (video_index + 1) % len(ACCIDENT_VIDEOS)
+
+    finally:
+        try:
+            cap.release()
+        except Exception:
+            pass
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 # ─── MJPEG generator ────────────────────────────────────────────────
 def generate_mjpeg():
     """Yield MJPEG frames for streaming."""
@@ -296,6 +497,15 @@ def video_feed():
     )
 
 
+@app.route("/accident_video_feed")
+def accident_video_feed():
+    """MJPEG stream for accident detection — only active while client is connected."""
+    return Response(
+        generate_accident_frames(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
 @app.route("/api/status")
 def api_status():
     """JSON endpoint for current parking status."""
@@ -327,6 +537,14 @@ def api_events():
     """JSON endpoint for recent events."""
     with event_log_lock:
         events = list(event_log)
+    return jsonify({"events": events})
+
+
+@app.route("/api/accident_events")
+def api_accident_events():
+    """JSON endpoint for recent accident detection events."""
+    with accident_events_lock:
+        events = list(accident_events)
     return jsonify({"events": events})
 
 
