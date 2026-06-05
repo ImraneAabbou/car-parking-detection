@@ -30,6 +30,7 @@ function updateThemeIcons(theme) {
 window.switchTab = function (tabId) {
     const btnVideo = document.getElementById('tab-btn-video');
     const btnMap = document.getElementById('tab-btn-map');
+<<<<<<< Updated upstream
     const btnAccidents = document.getElementById('tab-btn-accidents');
     const contentVideo = document.getElementById('tab-content-video');
     const contentMap = document.getElementById('tab-content-map');
@@ -44,6 +45,28 @@ window.switchTab = function (tabId) {
     [contentVideo, contentMap, contentAccidents].forEach(content => {
         if (content) content.classList.add('hidden', 'opacity-0');
     });
+=======
+    const btnAccident = document.getElementById('tab-btn-accident');
+    const contentVideo = document.getElementById('tab-content-video');
+    const contentMap = document.getElementById('tab-content-map');
+    const contentAccident = document.getElementById('tab-content-accident');
+    const accidentImg = document.getElementById('accident-feed');
+
+    if (!btnVideo || !btnMap || !contentVideo || !contentMap) return;
+
+    // Deactivate all
+    [btnVideo, btnMap, btnAccident].forEach(btn => {
+        if (btn) btn.classList.remove('active');
+    });
+    [contentVideo, contentMap, contentAccident].forEach(content => {
+        if (content) content.classList.add('hidden', 'opacity-0');
+    });
+
+    // Stop accident feed if switching away from accident tab
+    if (tabId !== 'accident' && accidentImg) {
+        accidentImg.src = '';
+    }
+>>>>>>> Stashed changes
 
     if (tabId === 'video') {
         btnVideo.classList.add('active');
@@ -56,11 +79,24 @@ window.switchTab = function (tabId) {
             contentMap.classList.remove('opacity-0');
             syncMapHeight();
         }, 10);
+<<<<<<< Updated upstream
     } else if (tabId === 'accidents') {
         btnAccidents.classList.add('active');
         contentAccidents.classList.remove('hidden');
         setTimeout(() => contentAccidents.classList.remove('opacity-0'), 10);
+=======
+    } else if (tabId === 'accident') {
+        btnAccident.classList.add('active');
+        contentAccident.classList.remove('hidden');
+        setTimeout(() => {
+            contentAccident.classList.remove('opacity-0');
+            if (accidentImg) accidentImg.src = '/accident_video_feed';
+        }, 10);
+>>>>>>> Stashed changes
     }
+
+    // Dispatch custom event so the notification panel knows which data to show
+    window.dispatchEvent(new CustomEvent('tab-changed', { detail: tabId }));
 };
 
 function syncMapHeight() {
@@ -214,6 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+<<<<<<< Updated upstream
     const accidentParent = accidentFeed ? accidentFeed.closest('.glass-card') : null;
     if (accidentFeed && accidentParent) {
         if (accidentFeed.complete) {
@@ -223,6 +260,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 accidentParent.classList.add('video-loaded');
             });
         }
+=======
+    const accidentFeed = document.getElementById('accident-feed');
+    const accidentParent = accidentFeed ? accidentFeed.closest('.glass-card') : null;
+    if (accidentFeed && accidentParent) {
+        accidentFeed.addEventListener('load', () => {
+            accidentParent.classList.add('video-loaded');
+        });
+        accidentFeed.addEventListener('error', () => {
+            // Retry after a short delay in case the feed wasn't ready yet
+            setTimeout(() => {
+                if (accidentFeed.src) accidentFeed.src = '/accident_video_feed';
+            }, 1000);
+        });
+>>>>>>> Stashed changes
     }
 
     async function fetchStatus() {
@@ -242,16 +293,25 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    let activeEventsTab = 'parking'; // 'parking' or 'accident'
+
     async function fetchEvents() {
+        const isAccidentTab = activeEventsTab === 'accident';
+        const url = isAccidentTab ? "/api/accident_events" : "/api/events";
+
         try {
-            const res = await fetch("/api/events");
+            const res = await fetch(url);
             const data = await res.json();
 
             const events = data.events;
 
             if (events.length > 0 && events.length !== lastKnownEventsCount) {
                 lastKnownEventsCount = events.length;
-                renderEvents(events);
+                if (isAccidentTab) {
+                    renderAccidentEvents(events);
+                } else {
+                    renderEvents(events);
+                }
             }
         } catch (error) {
             console.error("Failed to fetch events:", error);
@@ -289,6 +349,52 @@ document.addEventListener("DOMContentLoaded", () => {
             eventList.appendChild(item);
         });
     }
+
+    function renderAccidentEvents(events) {
+        eventCount.textContent = events.length;
+
+        eventList.innerHTML = "";
+
+        events.forEach(ev => {
+            const item = document.createElement("div");
+            item.className = "event-item text-sm";
+
+            const dot = document.createElement("div");
+            dot.className = "event-dot critical";
+
+            const content = document.createElement("div");
+
+            const timeSpan = document.createElement("span");
+            timeSpan.className = "text-[10px] event-time font-mono block mb-0.5";
+            timeSpan.textContent = ev.time;
+
+            const msgSpan = document.createElement("span");
+            msgSpan.className = "event-msg";
+            msgSpan.textContent = `Accident near spot #${ev.spot}`;
+
+            content.appendChild(timeSpan);
+            content.appendChild(msgSpan);
+
+            item.appendChild(dot);
+            item.appendChild(content);
+
+            eventList.appendChild(item);
+        });
+    }
+
+    // Track tab switches to update which events to show
+    window.addEventListener('tab-changed', function (e) {
+        const tab = e.detail;
+        if (tab === 'accident') {
+            activeEventsTab = 'accident';
+            document.getElementById('notifications-card').querySelector('h2').textContent = 'Accident Alerts';
+        } else {
+            activeEventsTab = 'parking';
+            document.getElementById('notifications-card').querySelector('h2').textContent = 'Notifications';
+        }
+        lastKnownEventsCount = 0;
+        fetchEvents();
+    });
 
     window.addEventListener('resize', () => {
         const mapTab = document.getElementById('tab-content-map');
