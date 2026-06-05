@@ -282,12 +282,21 @@ def video_processing_loop():
 
 # ─── Accident video processing thread ────────────────────────────────
 def accident_processing_loop():
-    """Process accident videos in cycle when accident tab is active."""
+    """Process accident videos in cycle when accident tab is active.
+    Mirrors process_video_with_geoai logic exactly — geoai.CarDetector, no rescale."""
     global accident_latest_frame, accident_current_video_index
+
+    try:
+        import geoai
+        detector = geoai.CarDetector()
+    except ImportError:
+        print("[ACCIDENT] geoai not installed — accident detection disabled")
+        while True:
+            time.sleep(10)
+        return
 
     cap = None
     video_index = 0
-    backSub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=36, detectShadows=False)
 
     parking_spots = []
     if os.path.exists(ACCIDENT_PICKLE):
@@ -304,6 +313,7 @@ def accident_processing_loop():
     debounce_sec = 10.0
 
     temp_frame_path = os.path.join(BASE_DIR, "temp_accident_frame.tif")
+    frame_count = 0
 
     while True:
         with accident_connections_lock:
@@ -313,7 +323,6 @@ def accident_processing_loop():
             if cap is not None:
                 cap.release()
                 cap = None
-                backSub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=36, detectShadows=False)
             with accident_frame_lock:
                 accident_latest_frame = None
             time.sleep(0.5)
@@ -335,129 +344,143 @@ def accident_processing_loop():
         if not ret:
             cap.release()
             cap = None
-            backSub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=36, detectShadows=False)
             with accident_video_lock:
                 accident_current_video_index = (video_index + 1) % len(ACCIDENT_VIDEOS)
             continue
 
-        # Resize for consistency
-        orig_h, orig_w = frame.shape[:2]
-        if orig_w > 1280:
-            scale = 1280 / orig_w
-            new_w = 1280
-            new_h = int(orig_h * scale)
-            frame = cv2.resize(frame, (new_w, new_h))
-            orig_h, orig_w = new_h, new_w
+        frame_count += 1
 
-        fg_mask = backSub.apply(frame)
-        _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel, iterations=2)
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # --- geoai CarDetector (exact original logic) ---
+        cv2.imwrite(temp_frame_path, frame)
+        mask_path = detector.generate_masks(temp_frame_path, min_object_area=800)
 
-        # --- VISUAL: draw parking spots semi-transparent ---
-        if parking_spots:
+        # --- VISUAL: draw semi-transparent parking spots (exact original) ---
+        if len(parking_spots) > 0:
             overlay = frame.copy()
-            for pos in parking_spots:
+            for idx, pos in enumerate(parking_spots):
                 spot_x, spot_y = pos
                 cv2.rectangle(overlay, (spot_x, spot_y), (spot_x + spot_w, spot_y + spot_h), (200, 200, 200), 1)
             cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
             for idx, pos in enumerate(parking_spots):
                 spot_x, spot_y = pos
-                cv2.putText(frame, str(idx + 1), (spot_x + 3, spot_y + 12),
+                display_num = str(idx + 1)
+                cv2.putText(frame, display_num, (spot_x + 3, spot_y + 12),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # --- Car detection via contours on foreground mask ---
-        contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 400]
-
-        num_cars = len(valid_contours)
         colliding_indices = set()
         crash_centroids = []
 
-        # --- CRASH ENGINE LOGIC ---
-        for i in range(num_cars):
-            cnt_a = valid_contours[i]
-            M = cv2.moments(cnt_a)
-            cX = int(M["m10"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][0]
-            cY = int(M["m01"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][1]
+        if mask_path and os.path.exists(mask_path):
+            masks = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
 
-            for j in range(i + 1, num_cars):
-                cnt_b = valid_contours[j]
-                min_dist = float('inf')
-                for point in cnt_a:
-                    pt = (float(point[0][0]), float(point[0][1]))
-                    dist = cv2.pointPolygonTest(cnt_b, pt, True)
-                    abs_dist = abs(dist)
-                    if abs_dist < min_dist:
-                        min_dist = abs_dist
-                if min_dist <= edge_dist_thresh:
-                    colliding_indices.add(i)
-                    colliding_indices.add(j)
-                    crash_centroids.append((cX, cY))
+            if masks is not None:
+                mask_8bit = (masks * 255).astype(np.uint8) if masks.max() <= 1 else masks.astype(np.uint8)
+                if len(mask_8bit.shape) == 3:
+                    mask_8bit = mask_8bit[:, :, 0]
 
-        # --- DUAL-CONDITION DEBOUNCE EVALUATION ---
-        if len(colliding_indices) > 0 and parking_spots:
-            avg_cx = int(sum(pt[0] for pt in crash_centroids) / len(crash_centroids))
-            avg_cy = int(sum(pt[1] for pt in crash_centroids) / len(crash_centroids))
+                contours, _ = cv2.findContours(mask_8bit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 200]
+                num_cars = len(valid_contours)
 
-            closest_spot_idx = None
-            min_spot_dist = float('inf')
-            for idx, pos in enumerate(parking_spots):
-                spot_x, spot_y = pos
-                center_spot_x = spot_x + (spot_w / 2)
-                center_spot_y = spot_y + (spot_h / 2)
-                dist_to_spot = math.sqrt((avg_cx - center_spot_x)**2 + (avg_cy - center_spot_y)**2)
-                if dist_to_spot < min_spot_dist:
-                    min_spot_dist = dist_to_spot
-                    closest_spot_idx = idx
+                # --- CRASH ENGINE LOGIC (exact original) ---
+                for i in range(num_cars):
+                    cnt_a = valid_contours[i]
+                    area_a = cv2.contourArea(cnt_a)
 
-            current_time = datetime.now()
-            should_trigger_alert = True
+                    M = cv2.moments(cnt_a)
+                    cX = int(M["m10"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][0]
+                    cY = int(M["m01"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][1]
 
-            with accident_debounce_lock:
-                if closest_spot_idx in accident_recent_alerts:
-                    last_alert_time = accident_recent_alerts[closest_spot_idx]
-                    if current_time - last_alert_time < timedelta(seconds=debounce_sec):
-                        should_trigger_alert = False
+                    for j in range(i + 1, num_cars):
+                        cnt_b = valid_contours[j]
 
-                if should_trigger_alert:
-                    accident_recent_alerts[closest_spot_idx] = current_time
+                        min_dist = float('inf')
+                        for point in cnt_a:
+                            pt = (float(point[0][0]), float(point[0][1]))
+                            dist = cv2.pointPolygonTest(cnt_b, pt, True)
+                            abs_dist = abs(dist)
+                            if abs_dist < min_dist:
+                                min_dist = abs_dist
 
-            if should_trigger_alert:
-                spot_num = closest_spot_idx + 1
-                msg = f"ACCIDENT at spot #{spot_num}"
-                with accident_event_log_lock:
-                    accident_event_log.appendleft({
-                        "time": current_time.strftime("%H:%M:%S"),
-                        "message": msg,
-                        "type": "critical",
-                        "spot": spot_num,
-                        "datetime": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    })
-                print(f"[ACCIDENT] >>> ALERT: {msg}")
+                        if min_dist <= edge_dist_thresh:
+                            colliding_indices.add(i)
+                            colliding_indices.add(j)
+                            crash_centroids.append((cX, cY))
 
-        # --- VISUAL RENDERING ---
-        for idx, cnt in enumerate(valid_contours):
-            M = cv2.moments(cnt)
-            if M["m00"] != 0:
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-            else:
-                cX, cY = cnt[0][0][0], cnt[0][0][1]
+                # --- DUAL-CONDITION DEBOUNCE EVALUATION (exact original) ---
+                if len(colliding_indices) > 0 and len(parking_spots) > 0:
+                    avg_cx = int(sum(pt[0] for pt in crash_centroids) / len(crash_centroids))
+                    avg_cy = int(sum(pt[1] for pt in crash_centroids) / len(crash_centroids))
 
-            if idx in colliding_indices:
-                cv2.drawContours(frame, [cnt], -1, (0, 0, 255), 2)
-                cv2.putText(frame, "CRASH", (cX - 20, cY),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
-            else:
-                cv2.drawContours(frame, [cnt], -1, (0, 255, 0), 1)
+                    closest_spot_idx = None
+                    min_spot_dist = float('inf')
 
-        # --- Video info overlay ---
+                    for idx, pos in enumerate(parking_spots):
+                        spot_x, spot_y = pos
+                        center_spot_x = spot_x + (spot_w / 2)
+                        center_spot_y = spot_y + (spot_h / 2)
+
+                        dist_to_spot = math.sqrt((avg_cx - center_spot_x)**2 + (avg_cy - center_spot_y)**2)
+                        if dist_to_spot < min_spot_dist:
+                            min_spot_dist = dist_to_spot
+                            closest_spot_idx = idx
+
+                    current_time = datetime.now()
+                    should_trigger_alert = True
+
+                    if closest_spot_idx in accident_recent_alerts:
+                        last_alert_time = accident_recent_alerts[closest_spot_idx]
+                        time_difference = current_time - last_alert_time
+
+                        if time_difference < timedelta(seconds=debounce_sec):
+                            should_trigger_alert = False
+
+                    if should_trigger_alert:
+                        accident_recent_alerts[closest_spot_idx] = current_time
+
+                        log_entry = {
+                            "datetime": current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "closest_spot_index": closest_spot_idx + 1,
+                            "frame": frame_count
+                        }
+                        msg = f"ACCIDENT at spot #{closest_spot_idx + 1}"
+                        with accident_event_log_lock:
+                            accident_event_log.appendleft({
+                                "time": current_time.strftime("%H:%M:%S"),
+                                "message": msg,
+                                "type": "critical",
+                                "spot": closest_spot_idx + 1,
+                                "datetime": log_entry["datetime"],
+                                "frame": frame_count,
+                            })
+                        print(f"[ACCIDENT] >>> ALERT TRIGGERED & LOGGED: {log_entry}")
+
+                # --- VISUAL RENDERING FOR CAR DETECTIONS (exact original) ---
+                for idx, cnt in enumerate(valid_contours):
+                    M = cv2.moments(cnt)
+                    if M["m00"] != 0:
+                        cX = int(M["m10"] / M["m00"])
+                        cY = int(M["m01"] / M["m00"])
+                    else:
+                        cX, cY = cnt[0][0][0], cnt[0][0][1]
+
+                    if idx in colliding_indices:
+                        cv2.drawContours(frame, [cnt], -1, (0, 0, 255), 2)
+                        cv2.putText(frame, "CRASH", (cX - 20, cY),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+                    else:
+                        cv2.drawContours(frame, [cnt], -1, (0, 255, 0), 1)
+
+            try:
+                os.remove(mask_path)
+            except OSError:
+                pass
+
+        # --- Video name overlay ---
         with accident_video_lock:
             vid_name = os.path.basename(ACCIDENT_VIDEOS[accident_current_video_index])
-        cv2.putText(frame, f"Source: {vid_name}", (10, orig_h - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        cv2.putText(frame, f"Source: {vid_name}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
         _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
         with accident_frame_lock:
