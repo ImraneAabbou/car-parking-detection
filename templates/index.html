@@ -165,6 +165,12 @@
                             <span>Parking Map</span>
                         </div>
                     </button>
+                    <button id="tab-btn-accidents" class="tab-btn relative px-4 py-2 text-sm font-semibold rounded-lg" onclick="switchTab('accidents')">
+                        <div class="flex items-center gap-2 relative z-10">
+                            <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                            <span>Accidents</span>
+                        </div>
+                    </button>
                 </div>
 
                 <!-- Tab Content Wrapper — fixed aspect so map matches video -->
@@ -218,6 +224,33 @@
                         </div>
                     </div>
 
+                    <!-- Tab Content: Accidents (hidden by default) -->
+                    <div id="tab-content-accidents" class="glass-card hidden opacity-0 transition-opacity duration-300 overflow-hidden">
+                        <div class="flex items-center justify-between px-5 py-3 section-border">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400"></i>
+                                <h2 class="text-sm font-semibold section-header-text">Accident Monitoring</h2>
+                            </div>
+                            <span class="text-[10px] px-2 py-0.5 rounded themed-badge font-medium">LIVE</span>
+                        </div>
+                        <div class="relative bg-black aspect-video">
+                            <img
+                                id="accident-feed"
+                                src="/accident_feed"
+                                alt="Accident monitoring feed"
+                                class="w-full h-full object-contain"
+                                loading="eager"
+                            >
+                            <!-- Loading overlay -->
+                            <div id="accident-loading" class="absolute inset-0 flex items-center justify-center">
+                                <div class="flex flex-col items-center gap-3">
+                                    <div class="spinner"></div>
+                                    <p class="text-xs loading-text font-medium">Loading accident feed...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
@@ -262,6 +295,9 @@
         const VIDEO_FRAME_WIDTH = {{ frame_w }};
         const VIDEO_FRAME_HEIGHT = {{ frame_h }};
         const PARKING_BG = "{{ url_for('static', filename='images/parking-bg.png') }}";
+        const ACCIDENT_SPOT_POSITIONS = {{ accident_spot_positions | tojson }};
+        const ACCIDENT_SPOT_WIDTH = {{ accident_spot_w }};
+        const ACCIDENT_SPOT_HEIGHT = {{ accident_spot_h }};
     </script>
 
     <!-- Dashboard JS -->

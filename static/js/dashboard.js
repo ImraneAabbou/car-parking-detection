@@ -30,17 +30,19 @@ function updateThemeIcons(theme) {
 window.switchTab = function (tabId) {
     const btnVideo = document.getElementById('tab-btn-video');
     const btnMap = document.getElementById('tab-btn-map');
+    const btnAccidents = document.getElementById('tab-btn-accidents');
     const contentVideo = document.getElementById('tab-content-video');
     const contentMap = document.getElementById('tab-content-map');
+    const contentAccidents = document.getElementById('tab-content-accidents');
 
     if (!btnVideo || !btnMap || !contentVideo || !contentMap) return;
 
-    [btnVideo, btnMap].forEach(btn => {
-        btn.classList.remove('active');
+    [btnVideo, btnMap, btnAccidents].forEach(btn => {
+        if (btn) btn.classList.remove('active');
     });
 
-    [contentVideo, contentMap].forEach(content => {
-        content.classList.add('hidden', 'opacity-0');
+    [contentVideo, contentMap, contentAccidents].forEach(content => {
+        if (content) content.classList.add('hidden', 'opacity-0');
     });
 
     if (tabId === 'video') {
@@ -54,6 +56,10 @@ window.switchTab = function (tabId) {
             contentMap.classList.remove('opacity-0');
             syncMapHeight();
         }, 10);
+    } else if (tabId === 'accidents') {
+        btnAccidents.classList.add('active');
+        contentAccidents.classList.remove('hidden');
+        setTimeout(() => contentAccidents.classList.remove('opacity-0'), 10);
     }
 };
 
@@ -183,6 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const eventList = document.getElementById("event-list");
     const eventCount = document.getElementById("event-count");
     const videoFeed = document.getElementById("video-feed");
+    const accidentFeed = document.getElementById("accident-feed");
     const clock = document.getElementById("clock");
 
     let lastKnownEventsCount = 0;
@@ -203,6 +210,17 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             videoFeed.addEventListener('load', () => {
                 videoParent.classList.add('video-loaded');
+            });
+        }
+    }
+
+    const accidentParent = accidentFeed ? accidentFeed.closest('.glass-card') : null;
+    if (accidentFeed && accidentParent) {
+        if (accidentFeed.complete) {
+            accidentParent.classList.add('video-loaded');
+        } else {
+            accidentFeed.addEventListener('load', () => {
+                accidentParent.classList.add('video-loaded');
             });
         }
     }

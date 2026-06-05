@@ -26,3 +26,12 @@ CLASSIFICATION_THRESHOLD = 0.5  # > threshold → Unreserved (empty)
 
 # ─── Event log ───────────────────────────────────────────────────────
 MAX_EVENTS = 50           # Maximum number of events to keep in memory
+
+# ─── Accident Detection ───────────────────────────────────────────────
+ACCIDENT_VIDEOS_DIR = os.path.join(BASE_DIR, "data", "accidents")
+ACCIDENT_PICKLE_PATH = os.path.join(BASE_DIR, "parking_positions_portion.pkl")
+ACCIDENT_SPOT_WIDTH = 75
+ACCIDENT_SPOT_HEIGHT = 150
+NUM_ACCIDENT_VIDEOS = 3
+ACCIDENT_EDGE_DIST_THRESH = 5.0
+ACCIDENT_DEBOUNCE_SEC = 10.0

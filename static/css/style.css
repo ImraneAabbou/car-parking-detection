@@ -302,6 +302,7 @@ body {
 .event-dot.occupied   { background: #f43f5e; box-shadow: 0 0 8px rgba(244, 63, 94, 0.4); }
 .event-dot.warning    { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
 .event-dot.critical   { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+.event-dot.accident   { background: #f97316; box-shadow: 0 0 8px rgba(249, 115, 22, 0.5); }
 .event-dot.system     { background: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
 .event-dot.info       { background: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); }
 
@@ -310,8 +311,9 @@ body {
 [data-theme="light"] .event-dot.occupied   { box-shadow: 0 0 4px rgba(244, 63, 94, 0.25); }
 [data-theme="light"] .event-dot.warning    { box-shadow: 0 0 4px rgba(245, 158, 11, 0.25); }
 [data-theme="light"] .event-dot.critical   { box-shadow: 0 0 4px rgba(239, 68, 68, 0.25); }
-[data-theme="light"] .event-dot.system     { box-shadow: 0 0 4px rgba(99, 102, 241, 0.25); }
-[data-theme="light"] .event-dot.info       { box-shadow: 0 0 4px rgba(99, 102, 241, 0.25); }
+[data-theme="light"] .event-dot.accident   { box-shadow: 0 0 4px rgba(249, 115, 22, 0.3); }
+[data-theme="light"] .event-dot.system     { box-shadow: 0 0 8px rgba(99, 102, 241, 0.25); }
+[data-theme="light"] .event-dot.info       { box-shadow: 0 0 8px rgba(99, 102, 241, 0.25); }
 
 .event-time {
     color: var(--text-muted);
