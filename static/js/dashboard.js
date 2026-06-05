@@ -30,23 +30,44 @@ function updateThemeIcons(theme) {
 window.switchTab = function (tabId) {
     const btnVideo = document.getElementById('tab-btn-video');
     const btnMap = document.getElementById('tab-btn-map');
+    const btnAccidents = document.getElementById('tab-btn-accidents');
     const contentVideo = document.getElementById('tab-content-video');
     const contentMap = document.getElementById('tab-content-map');
+    const contentAccidents = document.getElementById('tab-content-accidents');
+    
+    const notificationsCard = document.getElementById('notifications-card');
+    const accidentsNotificationsCard = document.getElementById('accidents-notifications-card');
 
     if (!btnVideo || !btnMap || !contentVideo || !contentMap) return;
 
-    [btnVideo, btnMap].forEach(btn => {
-        btn.classList.remove('active');
+    // Send active tab to backend to optimize CPU/memory usage
+    fetch('/api/set_active_tab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tab: tabId })
+    }).catch(err => console.error("Error setting active tab:", err));
+
+    [btnVideo, btnMap, btnAccidents].forEach(btn => {
+        if(btn) btn.classList.remove('active');
     });
 
-    [contentVideo, contentMap].forEach(content => {
-        content.classList.add('hidden', 'opacity-0');
+    [contentVideo, contentMap, contentAccidents].forEach(content => {
+        if(content) content.classList.add('hidden', 'opacity-0');
     });
+    
+    // Hide all right panels first
+    if(notificationsCard) notificationsCard.classList.add('hidden', 'opacity-0');
+    if(accidentsNotificationsCard) accidentsNotificationsCard.classList.add('hidden', 'opacity-0');
 
     if (tabId === 'video') {
         btnVideo.classList.add('active');
         contentVideo.classList.remove('hidden');
         setTimeout(() => contentVideo.classList.remove('opacity-0'), 10);
+        
+        if(notificationsCard) {
+            notificationsCard.classList.remove('hidden');
+            setTimeout(() => notificationsCard.classList.remove('opacity-0'), 10);
+        }
     } else if (tabId === 'map') {
         btnMap.classList.add('active');
         contentMap.classList.remove('hidden');
@@ -54,6 +75,34 @@ window.switchTab = function (tabId) {
             contentMap.classList.remove('opacity-0');
             syncMapHeight();
         }, 10);
+        
+        if(notificationsCard) {
+            notificationsCard.classList.remove('hidden');
+            setTimeout(() => notificationsCard.classList.remove('opacity-0'), 10);
+        }
+    } else if (tabId === 'accidents') {
+        if(btnAccidents) btnAccidents.classList.add('active');
+        if(contentAccidents) {
+            contentAccidents.classList.remove('hidden');
+            setTimeout(() => contentAccidents.classList.remove('opacity-0'), 10);
+            
+            // Set image source if not set
+            const accFeed = document.getElementById('accidents-feed');
+            if (accFeed && !accFeed.src.includes('accidents_feed')) {
+                accFeed.src = '/accidents_feed';
+            }
+            
+            // Call API to start processing
+            fetch('/api/start_accidents', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => console.log(data))
+                .catch(err => console.error("Error starting accidents:", err));
+        }
+        
+        if(accidentsNotificationsCard) {
+            accidentsNotificationsCard.classList.remove('hidden');
+            setTimeout(() => accidentsNotificationsCard.classList.remove('opacity-0'), 10);
+        }
     }
 };
 
@@ -206,6 +255,16 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
     }
+    
+    const accFeed = document.getElementById("accidents-feed");
+    const accParent = accFeed ? accFeed.closest('.glass-card') : null;
+    if (accFeed && accParent) {
+        accFeed.addEventListener('load', () => {
+            accParent.classList.add('video-loaded');
+            const loadingOverlay = document.getElementById('accidents-loading');
+            if (loadingOverlay) loadingOverlay.style.display = 'none';
+        });
+    }
 
     async function fetchStatus() {
         try {
@@ -272,6 +331,58 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const accidentEventList = document.getElementById("accident-event-list");
+    const accidentEventCount = document.getElementById("accident-event-count");
+    let lastKnownAccidentEventsCount = 0;
+
+    async function fetchAccidentEvents() {
+        try {
+            const res = await fetch("/api/accident_events");
+            const data = await res.json();
+            const events = data.events;
+
+            if (events.length > 0 && events.length !== lastKnownAccidentEventsCount) {
+                lastKnownAccidentEventsCount = events.length;
+                renderAccidentEvents(events);
+            }
+        } catch (error) {
+            console.error("Failed to fetch accident events:", error);
+        }
+    }
+
+    function renderAccidentEvents(events) {
+        if (!accidentEventCount || !accidentEventList) return;
+        
+        accidentEventCount.textContent = events.length;
+        accidentEventList.innerHTML = "";
+
+        events.forEach(ev => {
+            const item = document.createElement("div");
+            item.className = "event-item text-sm";
+
+            const dot = document.createElement("div");
+            dot.className = `event-dot ${ev.type}`;
+
+            const content = document.createElement("div");
+
+            const timeSpan = document.createElement("span");
+            timeSpan.className = "text-[10px] event-time font-mono block mb-0.5";
+            timeSpan.textContent = ev.time;
+
+            const msgSpan = document.createElement("span");
+            msgSpan.className = "event-msg";
+            msgSpan.textContent = ev.message;
+
+            content.appendChild(timeSpan);
+            content.appendChild(msgSpan);
+
+            item.appendChild(dot);
+            item.appendChild(content);
+
+            accidentEventList.appendChild(item);
+        });
+    }
+
     window.addEventListener('resize', () => {
         const mapTab = document.getElementById('tab-content-map');
         if (mapTab && !mapTab.classList.contains('hidden')) {
@@ -293,7 +404,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setInterval(fetchStatus, 2000);
     setInterval(fetchEvents, 3000);
+    setInterval(fetchAccidentEvents, 3000);
 
     fetchStatus();
     fetchEvents();
+    fetchAccidentEvents();
 });

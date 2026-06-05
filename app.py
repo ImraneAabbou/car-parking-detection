@@ -111,6 +111,30 @@ event_log_lock = threading.Lock()
 latest_frame = None
 frame_lock = threading.Lock()
 
+# ─── Accidents state ──────────────────────────────────────────────────
+accident_event_log = deque(maxlen=MAX_EVENTS)
+accident_event_log_lock = threading.Lock()
+
+latest_accident_frame = None
+accident_frame_lock = threading.Lock()
+
+accidents_thread = None
+accidents_thread_lock = threading.Lock()
+
+# Active monitoring states (helps switch processes dynamically to save memory)
+parking_monitoring_active = True
+accidents_monitoring_active = False
+
+# Shared variables for background accident detection worker
+accident_worker_frame = None
+accident_worker_frame_lock = threading.Lock()
+accident_worker_busy = False
+
+# Results from background accident detector worker
+accident_detected_contours = []
+accident_colliding_indices = set()
+accident_results_lock = threading.Lock()
+
 
 # ─── Helper: classify a batch of spot crops ──────────────────────────
 def classify_spots_batch(crops, model):
@@ -151,17 +175,26 @@ def video_processing_loop():
     global latest_frame, spot_status
 
     model = _get_model()
-
-    cap = cv2.VideoCapture(VIDEO_PATH)
-    if not cap.isOpened():
-        print(f"[ERROR] Cannot open video: {VIDEO_PATH}")
-        return
-
+    cap = None
     log_event("System started — monitoring active", "system")
 
     frame_count = 0
 
     while True:
+        if not parking_monitoring_active:
+            if cap is not None:
+                cap.release()
+                cap = None
+            time.sleep(0.5)
+            continue
+
+        if cap is None:
+            cap = cv2.VideoCapture(VIDEO_PATH)
+            if not cap.isOpened():
+                print(f"[ERROR] Cannot open video: {VIDEO_PATH}")
+                time.sleep(1.0)
+                continue
+
         ret, frame = cap.read()
         if not ret:
             # Loop video
@@ -257,12 +290,310 @@ def video_processing_loop():
     cap.release()
 
 
+# ─── Accidents background detector worker ───────────────────────────
+def accidents_detector_worker(detector, temp_frame_path):
+    """Worker thread that executes slow GeoAI inference on a background schedule."""
+    global accidents_monitoring_active
+    global accident_worker_frame, accident_worker_busy
+    global accident_detected_contours, accident_colliding_indices
+
+    import math
+    import pickle
+    from datetime import datetime, timedelta
+
+    recent_alerts = {}
+    debounce_sec = 10.0
+    spot_w = 75
+    spot_h = 150
+    edge_dist_thresh = 5.0
+
+    while accidents_monitoring_active:
+        frame_to_process = None
+        with accident_worker_frame_lock:
+            if accident_worker_frame is not None:
+                frame_to_process = accident_worker_frame.copy()
+                accident_worker_frame = None
+
+        if frame_to_process is None:
+            time.sleep(0.1)
+            continue
+
+        accident_worker_busy = True
+
+        try:
+            # Resize frame to 960x540 for 9x speedup (1 chip instead of 15 chips)
+            frame_resized = cv2.resize(frame_to_process, (960, 540))
+            cv2.imwrite(temp_frame_path, frame_resized)
+
+            mask_path = detector.generate_masks(
+                temp_frame_path,
+                min_object_area=200,
+                chip_size=(540, 960),
+                overlap=0.0
+            )
+
+            valid_contours = []
+            colliding_indices = set()
+
+            if mask_path and os.path.exists(mask_path):
+                masks = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
+
+                if masks is not None:
+                    # Resize mask back to 1920x1080 to match coordinate system of the original video
+                    masks_large = cv2.resize(masks, (1920, 1080), interpolation=cv2.INTER_NEAREST)
+                    mask_8bit = (masks_large * 255).astype(np.uint8) if masks_large.max() <= 1 else masks_large.astype(np.uint8)
+                    if len(mask_8bit.shape) == 3:
+                        mask_8bit = mask_8bit[:, :, 0]
+
+                    contours, _ = cv2.findContours(mask_8bit, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 200]
+                    num_cars = len(valid_contours)
+                    
+                    crash_centroids = []
+
+                    # Crash logic
+                    for k in range(num_cars):
+                        cnt_a = valid_contours[k]
+                        M = cv2.moments(cnt_a)
+                        cX = int(M["m10"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][0]
+                        cY = int(M["m01"] / M["m00"]) if M["m00"] != 0 else cnt_a[0][0][1]
+
+                        for j in range(k + 1, num_cars):
+                            cnt_b = valid_contours[j]
+                            min_dist = float("inf")
+                            for point in cnt_a:
+                                pt = (float(point[0][0]), float(point[0][1]))
+                                dist = cv2.pointPolygonTest(cnt_b, pt, True)
+                                abs_dist = abs(dist)
+                                if abs_dist < min_dist:
+                                    min_dist = abs_dist
+                                    
+                            if min_dist <= edge_dist_thresh:
+                                colliding_indices.add(k)
+                                colliding_indices.add(j)
+                                crash_centroids.append((cX, cY))
+
+                    # Load parking positions for the accidents view (parking_positions_portion.pkl)
+                    accidents_positions_path = os.path.join(BASE_DIR, "parking_positions_portion.pkl")
+                    accidents_positions = []
+                    try:
+                        with open(accidents_positions_path, "rb") as f:
+                            accidents_positions = pickle.load(f)
+                    except Exception as e:
+                        print(f"[ERROR] Could not load accidents positions in worker: {e}")
+
+                    if len(colliding_indices) > 0 and len(accidents_positions) > 0:
+                        avg_cx = int(sum(pt[0] for pt in crash_centroids) / len(crash_centroids))
+                        avg_cy = int(sum(pt[1] for pt in crash_centroids) / len(crash_centroids))
+
+                        closest_spot_idx = None
+                        min_spot_dist = float("inf")
+
+                        for idx, pos in enumerate(accidents_positions):
+                            spot_x, spot_y = pos
+                            center_spot_x = spot_x + (spot_w / 2)
+                            center_spot_y = spot_y + (spot_h / 2)
+
+                            dist_to_spot = math.sqrt((avg_cx - center_spot_x)**2 + (avg_cy - center_spot_y)**2)
+                            if dist_to_spot < min_spot_dist:
+                                min_spot_dist = dist_to_spot
+                                closest_spot_idx = idx
+
+                        current_time = datetime.now()
+                        should_trigger_alert = True
+
+                        if closest_spot_idx in recent_alerts:
+                            last_alert_time = recent_alerts[closest_spot_idx]
+                            time_difference = current_time - last_alert_time
+                            if time_difference < timedelta(seconds=debounce_sec):
+                                should_trigger_alert = False
+
+                        if should_trigger_alert:
+                            recent_alerts[closest_spot_idx] = current_time
+                            with accident_event_log_lock:
+                                accident_event_log.appendleft({
+                                    "time": current_time.strftime("%H:%M:%S"),
+                                    "message": f"Crash detected near spot #{closest_spot_idx + 1}",
+                                    "type": "critical",
+                                })
+
+                try:
+                    os.remove(mask_path)
+                except OSError:
+                    pass
+
+            # Update final shared results
+            with accident_results_lock:
+                accident_detected_contours = valid_contours
+                accident_colliding_indices = colliding_indices
+
+        except Exception as e:
+            print(f"[ERROR] Worker error: {e}")
+
+        accident_worker_busy = False
+
+
+# ─── Accidents processing thread ────────────────────────────────────
+def accidents_processing_loop():
+    """Process the 3 accident videos sequentially, streaming smoothly at 30 FPS."""
+    global latest_accident_frame, accidents_thread
+    global accidents_monitoring_active
+    global accident_worker_frame, accident_worker_busy
+    global accident_detected_contours, accident_colliding_indices
+
+    import geoai
+    import pickle
+    import tempfile
+
+    os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+    detector = geoai.CarDetector()
+
+    # Reset worker and detection state
+    with accident_worker_frame_lock:
+        accident_worker_frame = None
+    accident_worker_busy = False
+
+    with accident_results_lock:
+        accident_detected_contours = []
+        accident_colliding_indices = set()
+
+    # Load parking positions for drawing the overlay
+    accidents_positions_path = os.path.join(BASE_DIR, "parking_positions_portion.pkl")
+    try:
+        with open(accidents_positions_path, "rb") as f:
+            accidents_positions = pickle.load(f)
+    except Exception as e:
+        print(f"[ERROR] Could not load accidents positions: {e}")
+        accidents_positions = []
+
+    spot_w = 75
+    spot_h = 150
+
+    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        temp_frame_path = tmp.name
+
+    # Start background detector thread
+    worker_thread = threading.Thread(
+        target=accidents_detector_worker,
+        args=(detector, temp_frame_path),
+        daemon=True
+    )
+    worker_thread.start()
+
+    for i in range(1, 4):
+        if not accidents_monitoring_active:
+            break
+
+        video_path = f"data/accidents/accident-{i}.mp4"
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            print(f"[ERROR] Cannot open video: {video_path}")
+            continue
+
+        with accident_event_log_lock:
+            accident_event_log.appendleft({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "message": f"Started processing accident-{i}.mp4",
+                "type": "system",
+            })
+
+        frame_count = 0
+
+        while True:
+            if not accidents_monitoring_active:
+                break
+
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            frame_count += 1
+
+            # Submit frame to worker if not busy, e.g. every 15 frames (0.5s at 30 FPS)
+            if frame_count % 15 == 0 and not accident_worker_busy:
+                with accident_worker_frame_lock:
+                    accident_worker_frame = frame.copy()
+
+            # Retrieve results from worker thread
+            with accident_results_lock:
+                local_contours = list(accident_detected_contours)
+                local_colliding = set(accident_colliding_indices)
+
+            # Draw parking spots overlay (76 spots from parking_positions_portion.pkl)
+            if len(accidents_positions) > 0:
+                overlay = frame.copy()
+                for idx, pos in enumerate(accidents_positions):
+                    spot_x, spot_y = pos
+                    cv2.rectangle(overlay, (spot_x, spot_y), (spot_x + spot_w, spot_y + spot_h), (200, 200, 200), 1)
+                
+                cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
+
+                for idx, pos in enumerate(accidents_positions):
+                    spot_x, spot_y = pos
+                    display_num = str(idx + 1)
+                    cv2.putText(frame, display_num, (spot_x + 3, spot_y + 12), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
+
+            # Draw contours on the frame
+            for idx, cnt in enumerate(local_contours):
+                M = cv2.moments(cnt)
+                if M["m00"] != 0:
+                    cX = int(M["m10"] / M["m00"])
+                    cY = int(M["m01"] / M["m00"])
+                else:
+                    cX, cY = cnt[0][0][0], cnt[0][0][1]
+
+                if idx in local_colliding:
+                    cv2.drawContours(frame, [cnt], -1, (0, 0, 255), 2)
+                    cv2.putText(frame, "CRASH", (cX - 20, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2, cv2.LINE_AA)
+                else:
+                    cv2.drawContours(frame, [cnt], -1, (0, 255, 0), 1)
+
+            frame = cv2.resize(frame, (VIDEO_FRAME_WIDTH, VIDEO_FRAME_HEIGHT))
+            _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            with accident_frame_lock:
+                latest_accident_frame = buffer.tobytes()
+
+            # Smooth playback at 30 FPS
+            time.sleep(0.033)
+
+        cap.release()
+
+    try:
+        os.remove(temp_frame_path)
+    except OSError:
+        pass
+
+    with accident_event_log_lock:
+        accident_event_log.appendleft({
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "message": "Finished processing all accident videos" if accidents_monitoring_active else "Accident processing stopped",
+            "type": "info",
+        })
+
+    with accidents_thread_lock:
+        accidents_thread = None
+
+
 # ─── MJPEG generator ────────────────────────────────────────────────
 def generate_mjpeg():
     """Yield MJPEG frames for streaming."""
     while True:
         with frame_lock:
             frame_data = latest_frame
+        if frame_data is not None:
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n"
+            )
+        time.sleep(0.0066)  # ~15 FPS
+
+
+def generate_accidents_mjpeg():
+    """Yield MJPEG frames for accidents streaming."""
+    while True:
+        with accident_frame_lock:
+            frame_data = latest_accident_frame
         if frame_data is not None:
             yield (
                 b"--frame\r\n"
@@ -292,6 +623,15 @@ def video_feed():
     """MJPEG video stream endpoint."""
     return Response(
         generate_mjpeg(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.route("/accidents_feed")
+def accidents_feed():
+    """MJPEG video stream endpoint for accidents."""
+    return Response(
+        generate_accidents_mjpeg(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
     )
 
@@ -328,6 +668,48 @@ def api_events():
     with event_log_lock:
         events = list(event_log)
     return jsonify({"events": events})
+
+
+@app.route("/api/accident_events")
+def api_accident_events():
+    """JSON endpoint for recent accident events."""
+    with accident_event_log_lock:
+        events = list(accident_event_log)
+    return jsonify({"events": events})
+
+
+@app.route("/api/start_accidents", methods=["POST"])
+def api_start_accidents():
+    """Start the background processing thread for accidents."""
+    global accidents_thread
+    with accidents_thread_lock:
+        if accidents_thread is None or not accidents_thread.is_alive():
+            accidents_thread = threading.Thread(target=accidents_processing_loop, daemon=True)
+            accidents_thread.start()
+            return jsonify({"status": "started", "message": "Accident detection processing started."})
+        else:
+            return jsonify({"status": "running", "message": "Accident detection is already running."})
+
+
+@app.route("/api/set_active_tab", methods=["POST"])
+def api_set_active_tab():
+    """Dynamically set the active tab to optimize resources (memory and CPU)."""
+    global parking_monitoring_active, accidents_monitoring_active
+    data = request.get_json(force=True)
+    tab = data.get("tab")
+    
+    if tab in ["video", "map"]:
+        parking_monitoring_active = True
+        accidents_monitoring_active = False
+    elif tab == "accidents":
+        parking_monitoring_active = False
+        accidents_monitoring_active = True
+        
+    return jsonify({
+        "status": "success",
+        "parking_monitoring_active": parking_monitoring_active,
+        "accidents_monitoring_active": accidents_monitoring_active
+    })
 
 
 @app.route("/api/models")
