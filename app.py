@@ -488,6 +488,7 @@ def generate_mjpeg():
 # ─── MJPEG generator (accident) ──────────────────────────────────────
 def generate_accident_mjpeg():
     """Yield MJPEG frames for accident camera streaming."""
+    global accident_connections
     with accident_connections_lock:
         accident_connections += 1
     try:
