@@ -30,23 +30,38 @@ function updateThemeIcons(theme) {
 window.switchTab = function (tabId) {
     const btnVideo = document.getElementById('tab-btn-video');
     const btnMap = document.getElementById('tab-btn-map');
+    const btnAccident = document.getElementById('tab-btn-accident');
     const contentVideo = document.getElementById('tab-content-video');
     const contentMap = document.getElementById('tab-content-map');
+    const contentAccident = document.getElementById('tab-content-accident');
+    const parkingNotifHeader = document.getElementById('parking-notif-header');
+    const eventList = document.getElementById('event-list');
+    const accidentNotifHeader = document.getElementById('accident-notif-header');
+    const accidentEventList = document.getElementById('accident-event-list');
 
     if (!btnVideo || !btnMap || !contentVideo || !contentMap) return;
 
-    [btnVideo, btnMap].forEach(btn => {
-        btn.classList.remove('active');
+    [btnVideo, btnMap, btnAccident].forEach(btn => {
+        if (btn) btn.classList.remove('active');
     });
 
-    [contentVideo, contentMap].forEach(content => {
-        content.classList.add('hidden', 'opacity-0');
+    [contentVideo, contentMap, contentAccident].forEach(content => {
+        if (content) content.classList.add('hidden', 'opacity-0');
     });
+
+    if (parkingNotifHeader && eventList && accidentNotifHeader && accidentEventList) {
+        parkingNotifHeader.classList.add('hidden');
+        eventList.classList.add('hidden');
+        accidentNotifHeader.classList.add('hidden');
+        accidentEventList.classList.add('hidden');
+    }
 
     if (tabId === 'video') {
         btnVideo.classList.add('active');
         contentVideo.classList.remove('hidden');
         setTimeout(() => contentVideo.classList.remove('opacity-0'), 10);
+        if (parkingNotifHeader) parkingNotifHeader.classList.remove('hidden');
+        if (eventList) eventList.classList.remove('hidden');
     } else if (tabId === 'map') {
         btnMap.classList.add('active');
         contentMap.classList.remove('hidden');
@@ -54,6 +69,16 @@ window.switchTab = function (tabId) {
             contentMap.classList.remove('opacity-0');
             syncMapHeight();
         }, 10);
+        if (parkingNotifHeader) parkingNotifHeader.classList.remove('hidden');
+        if (eventList) eventList.classList.remove('hidden');
+    } else if (tabId === 'accident') {
+        if (btnAccident) btnAccident.classList.add('active');
+        if (contentAccident) {
+            contentAccident.classList.remove('hidden');
+            setTimeout(() => contentAccident.classList.remove('opacity-0'), 10);
+        }
+        if (accidentNotifHeader) accidentNotifHeader.classList.remove('hidden');
+        if (accidentEventList) accidentEventList.classList.remove('hidden');
     }
 };
 
@@ -207,6 +232,19 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Accident video loading
+    const accidentVideoFeed = document.getElementById('accident-video-feed');
+    const accidentVideoParent = accidentVideoFeed ? accidentVideoFeed.closest('.glass-card') : null;
+    if (accidentVideoFeed && accidentVideoParent) {
+        if (accidentVideoFeed.complete) {
+            accidentVideoParent.classList.add('video-loaded');
+        } else {
+            accidentVideoFeed.addEventListener('load', () => {
+                accidentVideoParent.classList.add('video-loaded');
+            });
+        }
+    }
+
     async function fetchStatus() {
         try {
             const res = await fetch("/api/status");
@@ -291,9 +329,61 @@ document.addEventListener("DOMContentLoaded", () => {
         mapObserver.observe(mapTab, { attributes: true, attributeFilter: ['class'] });
     }
 
+    async function fetchAccidentEvents() {
+        try {
+            const res = await fetch("/api/accident_events");
+            const data = await res.json();
+            renderAccidentEvents(data.events);
+        } catch (error) {
+            console.error("Failed to fetch accident events:", error);
+        }
+    }
+
+    function renderAccidentEvents(events) {
+        const list = document.getElementById("accident-event-list");
+        const count = document.getElementById("accident-event-count");
+        if (!list || !count) return;
+
+        count.textContent = events.length;
+
+        if (events.length === 0) {
+            list.innerHTML = '<div class="px-5 py-8 text-center text-xs events-placeholder italic">No accident events yet…</div>';
+            return;
+        }
+
+        list.innerHTML = "";
+        events.forEach(ev => {
+            const item = document.createElement("div");
+            item.className = "event-item text-sm";
+
+            const dot = document.createElement("div");
+            dot.className = "event-dot critical";
+
+            const content = document.createElement("div");
+
+            const timeSpan = document.createElement("span");
+            timeSpan.className = "text-[10px] event-time font-mono block mb-0.5";
+            timeSpan.textContent = ev.time;
+
+            const msgSpan = document.createElement("span");
+            msgSpan.className = "event-msg font-semibold text-rose-400";
+            msgSpan.textContent = ev.message;
+
+            content.appendChild(timeSpan);
+            content.appendChild(msgSpan);
+
+            item.appendChild(dot);
+            item.appendChild(content);
+
+            list.appendChild(item);
+        });
+    }
+
     setInterval(fetchStatus, 2000);
     setInterval(fetchEvents, 3000);
+    setInterval(fetchAccidentEvents, 3000);
 
     fetchStatus();
     fetchEvents();
+    fetchAccidentEvents();
 });
