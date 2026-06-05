@@ -30,22 +30,6 @@ function updateThemeIcons(theme) {
 window.switchTab = function (tabId) {
     const btnVideo = document.getElementById('tab-btn-video');
     const btnMap = document.getElementById('tab-btn-map');
-<<<<<<< Updated upstream
-    const btnAccidents = document.getElementById('tab-btn-accidents');
-    const contentVideo = document.getElementById('tab-content-video');
-    const contentMap = document.getElementById('tab-content-map');
-    const contentAccidents = document.getElementById('tab-content-accidents');
-
-    if (!btnVideo || !btnMap || !contentVideo || !contentMap) return;
-
-    [btnVideo, btnMap, btnAccidents].forEach(btn => {
-        if (btn) btn.classList.remove('active');
-    });
-
-    [contentVideo, contentMap, contentAccidents].forEach(content => {
-        if (content) content.classList.add('hidden', 'opacity-0');
-    });
-=======
     const btnAccident = document.getElementById('tab-btn-accident');
     const contentVideo = document.getElementById('tab-content-video');
     const contentMap = document.getElementById('tab-content-map');
@@ -66,7 +50,6 @@ window.switchTab = function (tabId) {
     if (tabId !== 'accident' && accidentImg) {
         accidentImg.src = '';
     }
->>>>>>> Stashed changes
 
     if (tabId === 'video') {
         btnVideo.classList.add('active');
@@ -79,12 +62,6 @@ window.switchTab = function (tabId) {
             contentMap.classList.remove('opacity-0');
             syncMapHeight();
         }, 10);
-<<<<<<< Updated upstream
-    } else if (tabId === 'accidents') {
-        btnAccidents.classList.add('active');
-        contentAccidents.classList.remove('hidden');
-        setTimeout(() => contentAccidents.classList.remove('opacity-0'), 10);
-=======
     } else if (tabId === 'accident') {
         btnAccident.classList.add('active');
         contentAccident.classList.remove('hidden');
@@ -92,7 +69,6 @@ window.switchTab = function (tabId) {
             contentAccident.classList.remove('opacity-0');
             if (accidentImg) accidentImg.src = '/accident_video_feed';
         }, 10);
->>>>>>> Stashed changes
     }
 
     // Dispatch custom event so the notification panel knows which data to show
@@ -225,7 +201,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const eventList = document.getElementById("event-list");
     const eventCount = document.getElementById("event-count");
     const videoFeed = document.getElementById("video-feed");
-    const accidentFeed = document.getElementById("accident-feed");
     const clock = document.getElementById("clock");
 
     let lastKnownEventsCount = 0;
@@ -250,17 +225,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-<<<<<<< Updated upstream
-    const accidentParent = accidentFeed ? accidentFeed.closest('.glass-card') : null;
-    if (accidentFeed && accidentParent) {
-        if (accidentFeed.complete) {
-            accidentParent.classList.add('video-loaded');
-        } else {
-            accidentFeed.addEventListener('load', () => {
-                accidentParent.classList.add('video-loaded');
-            });
-        }
-=======
     const accidentFeed = document.getElementById('accident-feed');
     const accidentParent = accidentFeed ? accidentFeed.closest('.glass-card') : null;
     if (accidentFeed && accidentParent) {
@@ -273,7 +237,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (accidentFeed.src) accidentFeed.src = '/accident_video_feed';
             }, 1000);
         });
->>>>>>> Stashed changes
     }
 
     async function fetchStatus() {
