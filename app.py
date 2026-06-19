@@ -323,12 +323,7 @@ def accidents_detector_worker(detector, temp_frame_path):
         try:
             cv2.imwrite(temp_frame_path, frame_to_process)
 
-            mask_path = detector.generate_masks(
-                temp_frame_path,
-                min_object_area=200,
-                chip_size=(1080, 1920),
-                overlap=0.0
-            )
+            mask_path = detector.generate_masks(temp_frame_path, min_object_area=800)
 
             valid_contours = []
             colliding_indices = set()
@@ -505,8 +500,8 @@ def accidents_processing_loop():
 
             frame_count += 1
 
-            # Submit frame to worker if not busy, e.g. every 15 frames (0.5s at 30 FPS)
-            if frame_count % 15 == 0 and not accident_worker_busy:
+            # Submit frame to worker if not busy
+            if not accident_worker_busy:
                 with accident_worker_frame_lock:
                     accident_worker_frame = frame.copy()
 
