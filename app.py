@@ -321,14 +321,12 @@ def accidents_detector_worker(detector, temp_frame_path):
         accident_worker_busy = True
 
         try:
-            # Resize frame to 960x540 for 9x speedup (1 chip instead of 15 chips)
-            frame_resized = cv2.resize(frame_to_process, (960, 540))
-            cv2.imwrite(temp_frame_path, frame_resized)
+            cv2.imwrite(temp_frame_path, frame_to_process)
 
             mask_path = detector.generate_masks(
                 temp_frame_path,
                 min_object_area=200,
-                chip_size=(540, 960),
+                chip_size=(1080, 1920),
                 overlap=0.0
             )
 
@@ -339,9 +337,7 @@ def accidents_detector_worker(detector, temp_frame_path):
                 masks = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
 
                 if masks is not None:
-                    # Resize mask back to 1920x1080 to match coordinate system of the original video
-                    masks_large = cv2.resize(masks, (1920, 1080), interpolation=cv2.INTER_NEAREST)
-                    mask_8bit = (masks_large * 255).astype(np.uint8) if masks_large.max() <= 1 else masks_large.astype(np.uint8)
+                    mask_8bit = (masks * 255).astype(np.uint8) if masks.max() <= 1 else masks.astype(np.uint8)
                     if len(mask_8bit.shape) == 3:
                         mask_8bit = mask_8bit[:, :, 0]
 
